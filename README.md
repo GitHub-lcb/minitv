@@ -261,6 +261,96 @@ python3 scripts/check_local_env.py
 - **端口被占用**：API 端口在 `.env` 的 `API_PORT`；前端端口在各自的 `vite.config.ts`；MySQL/Redis 端口在 `DATABASE_URL` / `REDIS_URL`。
 - **想清空本地数据重来**：`DROP DATABASE minitv;`，重新执行第 2 步初始化，再启动后端（Flyway 会重新建表）。
 - **MySQL 重启后 Flyway 报触发器权限错误**：`SET GLOBAL log_bin_trust_function_creators = 1` 是运行时变量，重启会失效；在 `my.ini` 的 `[mysqld]` 下加一行 `log_bin_trust_function_creators=1`，或重新执行 `scripts/init_mysql.sql`。
+## 配置真实图片与视频（Bunny）
+
+默认 `BUNNY_MODE=fake`：不联网、封面上传返回 503、视频走本地假的 TUS 接收端，适合不依赖外网的本地联调。
+要让「封面/字幕上传、视频直传、签名播放」走真实云端，需要 Bunny.net 账号并把下面这些凭据填进 `.env`。
+
+### 1. Bunny 后台准备（一次性）
+
+| 资源 | 创建位置 | 需要记下的值 | 对应 `.env` |
+| --- | --- | --- | --- |
+| Stream 视频库 | Bunny → Stream → Add Library | Library ID、Library API Key | `BUNNY_STREAM_LIBRARY_ID` / `BUNNY_STREAM_API_KEY` |
+| Stream 的 Pull Zone | 建库时自动生成（库的 CDN 设置里） | hostname（如 `vz-xxxx.b-cdn.net`）、Token Key | `BUNNY_STREAM_CDN_HOST` / `BUNNY_STREAM_TOKEN_KEY` |
+| Storage Zone（封面/字幕） | Bunny → Storage → Add Storage Zone（建议主区 New York，可加 LA 复制） | Zone 名、Storage Zone Password、上传域名（如 `ny.storage.bunnycdn.com`） | `BUNNY_STORAGE_ZONE` / `BUNNY_STORAGE_PASSWORD` / `BUNNY_STORAGE_HOST` |
+| Storage 的 Pull Zone（图片 CDN） | Storage Zone 关联的 Pull Zone，或单独新建 Storage 类型 Pull Zone | hostname（如 `minitv-dev-images.b-cdn.net`） | `BUNNY_IMAGE_CDN_HOST` |
+| 账号 API Key | Bunny → Account Settings → API Key | key | `BUNNY_API_KEY`（仅用于清缓存） |
+
+具体在控制台哪里拿值：
+
+- **Storage Zone 凭据**：打开刚建的 Storage Zone → **Access** → **API / HTTP**，复制 Zone 名、Password、Hostname。
+- **图片 Pull Zone**：可以在 Storage Zone 页的 **Connected Pull Zones** 里 Add，也可以走左侧 **CDN** → **Add Pull Zone**（Origin Type 选 Storage Zone）；hostname 在 Pull Zone 的 **General** 页。
+- **Stream 凭据**：**Stream** → 打开视频库 → **API** 页，复制 Library ID 和 API Key；库的 Pull Zone hostname 在 API 页的 **Pull Zone → Manage**。
+- **Stream Token Key**：视频库 → **Security** 页，开启 **Embed view token authentication**，复制 **Token authentication key**；同时确认 **CDN token authentication** 已开启（同一个 key 同时签播放地址和预览 embed）。
+- **Account API Key**：左侧 **Account → API key**，只用于 purge，权限较大，务必只放服务端。
+
+两个关键开关：
+
+- **视频 Pull Zone**：必须开启 **Token Authentication**，把 Token Key 填到 `BUNNY_STREAM_TOKEN_KEY`；否则 `/v1/playback` 签出的 HLS 地址无法通过鉴权。
+- **图片 Pull Zone**：**不要**开启 Token Authentication。封面在库里是公开 URL（`cover_url`），一旦图片 Pull Zone 开鉴权，封面会 403。字幕的播放 URL 虽然带签名参数，但在未开鉴权的 Pull Zone 上会被忽略；`BUNNY_IMAGE_TOKEN_KEY` 填任意非空串即可（只有上传了字幕才会用到）。
+- 开发 / 生产必须使用不同的 Stream Library、Storage Zone、Pull Zone；开发密钥不要进生产 `.env`。
+
+### 2. 填写 `.env` 并重启后端
+
+```dotenv
+BUNNY_MODE=real
+BUNNY_API_KEY=账号 API Key
+
+BUNNY_STORAGE_ZONE=minitv-dev
+BUNNY_STORAGE_HOST=ny.storage.bunnycdn.com
+BUNNY_STORAGE_PASSWORD=Storage Zone Password
+
+BUNNY_IMAGE_CDN_HOST=minitv-dev-images.b-cdn.net
+BUNNY_IMAGE_TOKEN_KEY=任意非空串（或图片 Pull Zone 的 Token Key）
+
+BUNNY_STREAM_LIBRARY_ID=123456
+BUNNY_STREAM_API_KEY=Library API Key
+BUNNY_STREAM_CDN_HOST=vz-xxxx.b-cdn.net
+BUNNY_STREAM_TOKEN_KEY=视频 Pull Zone 的 Token Key
+```
+
+Java 服务在启动时读取 `.env`，改完需要重启：
+
+```bash
+cd server
+mvn spring-boot:run
+```
+
+缺少某个变量时，相关接口会返回明确的 503，例如
+`{"detail":"BUNNY_MODE=real but BUNNY_STREAM_LIBRARY_ID is not configured"}`，按提示补齐即可。
+
+### 3. 在后台走一遍
+
+1. **封面**：建剧后上传封面（jpg / png / webp，≤ 5MB）。文件写入 Storage 的 `covers/{drama_id}/cover.{ext}`，`cover_url` 变成 `https://{BUNNY_IMAGE_CDN_HOST}/covers/...`。
+2. **视频**：新建分集 →「上传视频」→ 浏览器先调 `upload-session`（服务端在 Bunny 创建视频对象并返回 TUS 地址与签名头）→ 浏览器直传 Bunny → 自动转码。视频二进制不经过 API 服务器。
+3. **转码完成**：`BUNNY_MODE=real` 时后端每 120 秒自动对账一次 Bunny 状态；也可以在后台点「同步状态」。分集进入「审核中」后按正常流程审核、发布。
+4. **字幕**（可选）：上传 `.vtt` / `.srt`（≤ 2MB），存到 Storage 的 `subs/{episode_id}/`，播放接口返回带签名参数的 URL。
+5. **播放**：公开端 `POST /v1/playback` 通过权限判断后签发 **5 分钟** HLS 地址：
+   `https://{BUNNY_STREAM_CDN_HOST}/bcdn_token=...&token_path=.../{video_id}/playlist.m3u8`。
+   后台分集「预览」用的是 Bunny Player 临时签名链接，不会暴露未发布分集的直链。
+
+### 4. 转码回调（可选）
+
+默认不需要配回调：后端对账轮询 + 后台「同步状态」已经能完成 `transcoding → in_review`。
+
+如果配置 Bunny Stream Webhook 指向 `https://<你的 API 域名>/v1/bunny/callback`，请求必须带
+`X-Bunny-Signature = HMAC-SHA256(BUNNY_CALLBACK_SECRET, 原始请求体)`。Bunny 原生 Webhook 不发送这个头，直接指向会返回 401；需要自己加一层中继签名，或继续使用对账/手动同步。
+
+### 5. 不接 Bunny 的替代方案
+
+- **只要封面临时可用**：不配 Storage，建剧后在后台/`PATCH /admin/v1/dramas/{id}` 里把 `cover_url` 填成任意外部图片 URL。
+- **视频**：`episodes` 只保存 `bunny_video_id`，没有"外部视频 URL"字段。不接 Bunny 就只能保持 `BUNNY_MODE=fake`（地址是假的，播放器不会真的出画面）；要接别家 HLS 需要改播放模块代码。
+- **批量导入**：`python3 scripts/import_hotlist.py` 走后台 API + Bunny PUT 批量导入；单集也可用 CLI `minitv episode upload <id> ./ep01.mp4`。
+
+### 6. 常见排错
+
+| 现象 | 原因 |
+| --- | --- |
+| 封面 403 / 不显示 | 图片 Pull Zone 开了 Token Authentication；关掉，或用外部图片 URL |
+| 播放 403 | 视频 Pull Zone 未开 Token Authentication，或 `BUNNY_STREAM_TOKEN_KEY` 填错 |
+| 上传返回 401 / 502 | `BUNNY_STREAM_API_KEY` 与 Library 不匹配，或用了账号 API Key 代替 Library API Key |
+| 上传接口 503 | `BUNNY_MODE=real` 但对应变量为空；按 `detail` 里的变量名补齐并重启 |
+| 字幕播放 500 | 有 `subtitle_url` 但 `BUNNY_IMAGE_TOKEN_KEY` 为空 |
 ## 运行 App
 
 ```bash
