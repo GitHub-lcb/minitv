@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="us.minitv.admin.flow.content.mapper.AFContentEpisodeMapper">
+
+  <select id="findById" resultType="us.minitv.content.row.EpisodeRow">
+    SELECT * FROM episodes WHERE id = #{id}
+  </select>
+
+  <select id="findFirstByDramaOrdered" resultType="us.minitv.content.row.EpisodeRow">
+    SELECT * FROM episodes WHERE drama_id = #{dramaId} ORDER BY episode_number LIMIT 1
+  </select>
+
+  <select id="listByDramaOrdered" resultType="us.minitv.content.row.EpisodeRow">
+    SELECT * FROM episodes WHERE drama_id = #{dramaId} ORDER BY episode_number
+  </select>
+
+  <select id="findDuplicateId" resultType="java.lang.Long">
+    SELECT id FROM episodes WHERE drama_id = #{dramaId} AND episode_number = #{number} LIMIT 1
+  </select>
+
+  <select id="findDuplicateIdExcluding" resultType="java.lang.Long">
+    SELECT id FROM episodes
+    WHERE drama_id = #{dramaId} AND episode_number = #{number} AND id &lt;&gt; #{id}
+    LIMIT 1
+  </select>
+
+  <select id="listNumbersByDrama" resultType="java.lang.Integer">
+    SELECT episode_number FROM episodes WHERE drama_id = #{dramaId}
+  </select>
+
+  <sql id="pageFilters">
+    WHERE drama_id = #{dramaId}
+    <if test="status != null and status != ''">
+      AND status = #{status}
+    </if>
+    <if test="q != null and q != ''">
+      AND (title LIKE CONCAT('%', #{q}, '%') OR episode_number = #{number})
+    </if>
+  </sql>
+
+  <select id="countPage" resultType="long">
+    SELECT COUNT(*) FROM episodes
+    <include refid="pageFilters"/>
+  </select>
+
+  <select id="page" resultType="us.minitv.content.row.EpisodeRow">
+    SELECT * FROM episodes
+    <include refid="pageFilters"/>
+    ORDER BY episode_number
+    LIMIT #{limit} OFFSET #{offset}
+  </select>
+
+  <select id="listByIds" resultType="us.minitv.content.row.EpisodeRow">
+    SELECT * FROM episodes
+    WHERE id IN
+    <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    ORDER BY id
+  </select>
+
+  <select id="listByStatusWithVideo" resultType="us.minitv.content.row.EpisodeRow">
+    SELECT * FROM episodes WHERE status = #{status} AND bunny_video_id &lt;&gt; ''
+  </select>
+
+  <select id="listIdsByDrama" resultType="java.lang.Long">
+    SELECT id FROM episodes WHERE drama_id = #{dramaId}
+  </select>
+
+  <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+    INSERT INTO episodes
+      (drama_id, episode_number, title, duration_seconds, bunny_video_id, subtitle_url,
+       width, height, size_bytes, mime, status)
+    VALUES
+      (#{dramaId}, #{episodeNumber}, #{title}, #{durationSeconds}, #{bunnyVideoId}, #{subtitleUrl},
+       #{width}, #{height}, #{sizeBytes}, #{mime}, #{status})
+  </insert>
+
+  <update id="updateTitle">
+    UPDATE episodes SET title = #{title} WHERE id = #{id}
+  </update>
+
+  <update id="updateEpisodeNumber">
+    UPDATE episodes SET episode_number = #{number} WHERE id = #{id}
+  </update>
+
+  <update id="updateStatus">
+    UPDATE episodes SET status = #{status} WHERE id = #{id}
+  </update>
+
+  <update id="updateDuration">
+    UPDATE episodes SET duration_seconds = #{duration} WHERE id = #{id}
+  </update>
+
+  <update id="updateBunnyVideoId">
+    UPDATE episodes SET bunny_video_id = #{videoId} WHERE id = #{id}
+  </update>
+
+  <update id="updateUploadFields">
+    UPDATE episodes
+    SET bunny_video_id = #{videoId},
+        mime = #{mime},
+        size_bytes = #{sizeBytes},
+        width = #{width},
+        height = #{height},
+        duration_seconds = #{duration}
+    WHERE id = #{id}
+  </update>
+
+  <update id="updateSubtitleUrl">
+    UPDATE episodes SET subtitle_url = #{subtitleUrl} WHERE id = #{id}
+  </update>
+
+  <update id="updateSizeBytes">
+    UPDATE episodes SET size_bytes = #{sizeBytes} WHERE id = #{id}
+  </update>
+
+  <delete id="deleteById">
+    DELETE FROM episodes WHERE id = #{id}
+  </delete>
+
+</mapper>

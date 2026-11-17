@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="us.minitv.partner.mapper.PartnerAuditLogMapper">
+
+    <insert id="insertAuditLog" parameterType="us.minitv.common.row.AuditLogRow"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO audit_logs (actor_type, actor_id, action, target_type, target_id, payload)
+        VALUES (#{actorType}, #{actorId,jdbcType=BIGINT}, #{action}, #{targetType},
+                #{targetId,jdbcType=BIGINT}, #{payload,jdbcType=LONGVARCHAR})
+    </insert>
+
+</mapper>

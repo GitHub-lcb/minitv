@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="us.minitv.psocial.mapper.PSocialReactionMapper">
+
+    <select id="findOne" resultType="us.minitv.social.row.ReactionRow">
+        SELECT * FROM reactions
+        WHERE user_id = #{userId}
+          AND target_type = #{targetType}
+          AND target_id = #{targetId}
+          AND kind = #{kind}
+        LIMIT 1
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO reactions (user_id, target_type, target_id, kind)
+        VALUES (#{userId}, #{targetType}, #{targetId}, #{kind})
+    </insert>
+
+    <delete id="deleteById">
+        DELETE FROM reactions WHERE id = #{id}
+    </delete>
+
+    <select id="countByTarget" resultType="us.minitv.psocial.dto.PSocialCountRow">
+        SELECT target_id AS target_id, COUNT(*) AS total
+        FROM reactions
+        WHERE target_type = #{targetType}
+          AND kind = #{kind}
+          AND target_id IN
+          <foreach collection="ids" item="item" open="(" separator="," close=")">
+              #{item}
+          </foreach>
+        GROUP BY target_id
+    </select>
+
+    <select id="listTargetIds" resultType="java.lang.Long">
+        SELECT target_id FROM reactions
+        WHERE user_id = #{userId}
+          AND target_type = #{targetType}
+          AND kind = #{kind}
+          AND target_id IN
+          <foreach collection="ids" item="item" open="(" separator="," close=")">
+              #{item}
+          </foreach>
+    </select>
+
+    <select id="countFavoriteDramas" resultType="long">
+        SELECT COUNT(*)
+        FROM dramas d
+        JOIN reactions r ON r.target_id = d.id
+        WHERE r.user_id = #{userId}
+          AND r.target_type = 'drama'
+          AND r.kind = 'favorite'
+          AND d.status = 'published'
+    </select>
+
+    <select id="listFavoriteDramas" resultType="us.minitv.content.row.DramaRow">
+        SELECT d.*
+        FROM dramas d
+        JOIN reactions r ON r.target_id = d.id
+        WHERE r.user_id = #{userId}
+          AND r.target_type = 'drama'
+          AND r.kind = 'favorite'
+          AND d.status = 'published'
+        ORDER BY r.id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="listByUserAndKind" resultType="us.minitv.social.row.ReactionRow">
+        SELECT * FROM reactions
+        WHERE user_id = #{userId} AND kind = #{kind}
+    </select>
+
+</mapper>

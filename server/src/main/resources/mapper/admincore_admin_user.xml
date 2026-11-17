@@ -1,0 +1,29 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="us.minitv.admin.core.mapper.AdminCoreAdminUserMapper">
+
+    <select id="list" resultType="us.minitv.ops.row.AdminUserRow">
+        SELECT * FROM admin_users
+        <where>
+            <if test="needle != null and needle != ''">
+                AND (username LIKE CONCAT('%', #{needle}, '%')
+                     OR display_name LIKE CONCAT('%', #{needle}, '%'))
+            </if>
+            <if test="role != null and role != ''">AND `role` = #{role}</if>
+            <if test="status != null and status != ''">AND status = #{status}</if>
+        </where>
+        ORDER BY id
+        LIMIT 200
+    </select>
+
+    <update id="updateProfile">
+        UPDATE admin_users
+        <set>
+            <if test="setDisplayName">display_name = #{displayName},</if>
+            <if test="setRole">`role` = #{role},</if>
+            updated_at = #{updatedAt}
+        </set>
+        WHERE id = #{id}
+    </update>
+
+</mapper>

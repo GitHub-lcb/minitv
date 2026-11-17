@@ -1,0 +1,45 @@
+server:
+  port: ${API_PORT:18110}
+  address: ${API_HOST:127.0.0.1}
+  shutdown: graceful
+
+spring:
+  application:
+    name: minitv-server
+  # The Python service reads the repository-root .env; keep that single source of
+  # truth for local runs. OS environment variables still win over these values.
+  config:
+    import:
+      - optional:file:./.env[.properties]
+      - optional:file:../.env[.properties]
+  web:
+    resources:
+      add-mappings: false
+  servlet:
+    multipart:
+      # Cover / subtitle uploads are a few MB; nginx in front allows 32m.
+      max-file-size: 32MB
+      max-request-size: 32MB
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: false
+    serialization:
+      write-dates-as-timestamps: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+  main:
+    banner-mode: off
+
+mybatis:
+  mapper-locations: classpath:mapper/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+    default-fetch-size: 200
+    default-statement-timeout: 30
+
+logging:
+  level:
+    root: INFO
+    us.minitv: INFO

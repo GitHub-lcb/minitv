@@ -34,16 +34,16 @@ for raw in src.read_text().splitlines():
     if key.startswith(keep_prefixes) or key in keep_exact:
         lines.append(f"{key}={value}")
 
-pg_password = secrets.token_urlsafe(24)
+mysql_password = secrets.token_urlsafe(24)
 redis_password = secrets.token_urlsafe(24)
 lines.extend([
     "APP_ENV=production",
     "API_HOST=127.0.0.1",
     "API_PORT=18110",
-    "POSTGRES_USER=minitv",
-    f"POSTGRES_PASSWORD={pg_password}",
-    "POSTGRES_DB=minitv",
-    f"DATABASE_URL=postgresql://minitv:{pg_password}@127.0.0.1:5432/minitv",
+    "MYSQL_USER=minitv",
+    f"MYSQL_PASSWORD={mysql_password}",
+    "MYSQL_DB=minitv",
+    f"DATABASE_URL=mysql://minitv:{mysql_password}@127.0.0.1:3306/minitv",
     f"REDIS_PASSWORD={redis_password}",
     f"REDIS_URL=redis://:{redis_password}@127.0.0.1:6379/0",
     "CORS_ORIGINS=https://minitv.us,https://www.minitv.us,https://admin.minitv.us,https://h5.minitv.us",
@@ -62,22 +62,13 @@ else
   echo "server env already exists; not regenerating secrets"
 fi
 
+echo "→ build Java service locally"
+( cd "$ROOT/server" && mvn -B -q -DskipTests package )
+
 echo "→ sync code to ${HOST}:${REMOTE_DIR}"
 ssh -o BatchMode=yes "$HOST" "mkdir -p '$REMOTE_DIR'"
-rsync -az --delete \
-  --exclude '.git/' \
-  --exclude '.env' \
-  --exclude '.venv/' \
-  --exclude 'node_modules/' \
-  --exclude 'admin/dist/' \
-  --exclude 'web/dist/' \
-  --exclude 'data/' \
-  --exclude '.workbuddy/' \
-  --exclude '__pycache__/' \
-  --exclude '.pytest_cache/' \
-  --exclude '*.pyc' \
-  "$ROOT/backend/" "$HOST:$REMOTE_DIR/backend/"
 rsync -az "$ROOT/docker-compose.yml" "$HOST:$REMOTE_DIR/docker-compose.yml"
+scp -q "$ROOT/server/target/minitv-server-2.0.0.jar" "$HOST:$REMOTE_DIR/minitv-server.jar"
 if [[ -f /tmp/minitv-production.env ]]; then
   scp -q /tmp/minitv-production.env "$HOST:/tmp/minitv-production.env"
   rm -f /tmp/minitv-production.env
@@ -87,9 +78,9 @@ echo "→ install runtime and start API on ${HOST}"
 ssh -o BatchMode=yes "$HOST" "API_PORT='$API_PORT' REMOTE_DIR='$REMOTE_DIR' bash -s" << 'REMOTE'
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
-if ! command -v nginx >/dev/null || ! command -v psql >/dev/null || ! command -v redis-server >/dev/null; then
+if ! command -v nginx >/dev/null || ! command -v mysql >/dev/null || ! command -v redis-server >/dev/null || ! command -v java >/dev/null; then
   apt-get update -qq
-  apt-get install -y -qq nginx postgresql postgresql-contrib redis-server python3-venv python3-pip rsync
+  apt-get install -y -qq nginx mysql-server redis-server openjdk-21-jre-headless rsync
 fi
 
 install -d -m 755 "$REMOTE_DIR"
@@ -105,21 +96,16 @@ set -a
 source "$REMOTE_DIR/.env"
 set +a
 
-sudo -u postgres psql -v ON_ERROR_STOP=1 << SQL
-DO \$\$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'minitv') THEN
-    CREATE ROLE minitv LOGIN PASSWORD '${POSTGRES_PASSWORD}';
-  ELSE
-    ALTER ROLE minitv WITH LOGIN PASSWORD '${POSTGRES_PASSWORD}';
-  END IF;
-END
-\$\$;
-SELECT 'CREATE DATABASE minitv OWNER minitv'
-WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'minitv')\gexec
-GRANT ALL PRIVILEGES ON DATABASE minitv TO minitv;
+# Status-machine triggers need this on every restart (binlog is on by default).
+printf '[mysqld]\nlog_bin_trust_function_creators = 1\n' > /etc/mysql/mysql.conf.d/minitv.cnf
+mysql -uroot << SQL
+CREATE DATABASE IF NOT EXISTS minitv CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+CREATE USER IF NOT EXISTS 'minitv'@'127.0.0.1' IDENTIFIED BY '${MYSQL_PASSWORD}';
+ALTER USER 'minitv'@'127.0.0.1' IDENTIFIED BY '${MYSQL_PASSWORD}';
+GRANT ALL PRIVILEGES ON minitv.* TO 'minitv'@'127.0.0.1';
+SET GLOBAL log_bin_trust_function_creators = 1;
+FLUSH PRIVILEGES;
 SQL
-sudo -u postgres psql -d minitv -v ON_ERROR_STOP=1 -c "GRANT ALL ON SCHEMA public TO minitv;"
 
 if ! grep -q '^requirepass ' /etc/redis/redis.conf; then
   printf '\nrequirepass %s\n' "$REDIS_PASSWORD" >> /etc/redis/redis.conf
@@ -127,31 +113,28 @@ else
   sed -i "s/^requirepass .*/requirepass ${REDIS_PASSWORD}/" /etc/redis/redis.conf
 fi
 sed -i 's/^bind .*/bind 127.0.0.1 ::1/' /etc/redis/redis.conf
-systemctl enable --now postgresql redis-server
+systemctl enable --now mysql redis-server
 systemctl restart redis-server
 
-python3 -m venv "$REMOTE_DIR/.venv"
-"$REMOTE_DIR/.venv/bin/pip" install -q -r "$REMOTE_DIR/backend/requirements.txt"
-(
-  cd "$REMOTE_DIR/backend"
-  set -a
-  # shellcheck disable=SC1091
-  source "$REMOTE_DIR/.env"
-  set +a
-  ../.venv/bin/alembic upgrade head
-  ../.venv/bin/python -m app.seed_admin
-)
+cd "$REMOTE_DIR"
+set -a
+# shellcheck disable=SC1091
+source "$REMOTE_DIR/.env"
+set +a
+# Flyway creates every table on boot; the seed runner creates the first admin
+# account only when admin_users is empty (safe to re-run).
+SEED_ADMIN_RUN=1 java -jar "$REMOTE_DIR/minitv-server.jar" --spring.main.web-application-type=none
 
 cat > /etc/systemd/system/minitv-api.service << UNIT
 [Unit]
 Description=MiniTV API
-After=network.target postgresql.service redis-server.service
+After=network.target mysql.service redis-server.service
 
 [Service]
 Type=simple
 WorkingDirectory=$REMOTE_DIR
 EnvironmentFile=$REMOTE_DIR/.env
-ExecStart=$REMOTE_DIR/.venv/bin/uvicorn app.main:app --app-dir $REMOTE_DIR/backend --host 127.0.0.1 --port $API_PORT
+ExecStart=/usr/bin/java -jar $REMOTE_DIR/minitv-server.jar
 Restart=on-failure
 RestartSec=2
 

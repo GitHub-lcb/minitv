@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="us.minitv.partner.mapper.PartnerEpisodeMapper">
+
+    <sql id="columns">
+        id, drama_id, episode_number, title, duration_seconds, bunny_video_id, subtitle_url,
+        width, height, size_bytes, mime, status, created_at, updated_at
+    </sql>
+
+    <select id="findById" resultType="us.minitv.content.row.EpisodeRow">
+        SELECT <include refid="columns"/> FROM episodes WHERE id = #{id}
+    </select>
+
+    <select id="findOwned" resultType="us.minitv.content.row.EpisodeRow">
+        SELECT e.id, e.drama_id, e.episode_number, e.title, e.duration_seconds,
+               e.bunny_video_id, e.subtitle_url, e.width, e.height, e.size_bytes,
+               e.mime, e.status, e.created_at, e.updated_at
+        FROM episodes e
+        JOIN dramas d ON d.id = e.drama_id
+        WHERE e.id = #{episodeId} AND d.supplier_id = #{supplierId}
+    </select>
+
+    <select id="countByDrama" resultType="long">
+        SELECT COUNT(id) FROM episodes WHERE drama_id = #{dramaId}
+    </select>
+
+    <select id="maxEpisodeNumber" resultType="java.lang.Integer">
+        SELECT MAX(episode_number) FROM episodes WHERE drama_id = #{dramaId}
+    </select>
+
+    <select id="findIdByDramaNumber" resultType="java.lang.Long">
+        SELECT id FROM episodes
+        WHERE drama_id = #{dramaId} AND episode_number = #{episodeNumber}
+        LIMIT 1
+    </select>
+
+    <select id="findOtherIdByDramaNumber" resultType="java.lang.Long">
+        SELECT id FROM episodes
+        WHERE drama_id = #{dramaId} AND episode_number = #{episodeNumber} AND id &lt;&gt; #{excludeId}
+        LIMIT 1
+    </select>
+
+    <select id="listByDrama" resultType="us.minitv.content.row.EpisodeRow">
+        SELECT <include refid="columns"/> FROM episodes
+        WHERE drama_id = #{dramaId}
+        ORDER BY episode_number
+    </select>
+
+    <insert id="insertEpisode" parameterType="us.minitv.content.row.EpisodeRow"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO episodes (
+            drama_id, episode_number, title, duration_seconds, bunny_video_id, subtitle_url,
+            width, height, size_bytes, mime, status
+        ) VALUES (
+            #{dramaId}, #{episodeNumber}, #{title}, #{durationSeconds}, #{bunnyVideoId}, #{subtitleUrl},
+            #{width}, #{height}, #{sizeBytes}, #{mime}, #{status}
+        )
+    </insert>
+
+    <update id="updateEpisode" parameterType="us.minitv.content.row.EpisodeRow">
+        UPDATE episodes
+        SET title = #{title}, episode_number = #{episodeNumber}, updated_at = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateStatus">
+        UPDATE episodes SET status = #{status}, updated_at = NOW() WHERE id = #{id}
+    </update>
+
+    <update id="resetForReplace">
+        UPDATE episodes
+        SET status = 'not_uploaded', bunny_video_id = '', updated_at = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateUploadFields">
+        UPDATE episodes
+        SET bunny_video_id = #{bunnyVideoId}, mime = #{mime}, size_bytes = #{sizeBytes},
+            width = #{width}, height = #{height}, duration_seconds = #{durationSeconds},
+            status = #{status}, updated_at = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateSizeBytes">
+        UPDATE episodes SET size_bytes = #{sizeBytes}, updated_at = NOW() WHERE id = #{id}
+    </update>
+
+    <delete id="deleteEpisode">
+        DELETE FROM episodes WHERE id = #{id}
+    </delete>
+
+</mapper>

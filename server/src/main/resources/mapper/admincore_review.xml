@@ -1,0 +1,35 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="us.minitv.admin.core.mapper.AdminCoreReviewMapper">
+
+    <sql id="reviewWhere">
+        WHERE d.review_state = #{state}
+        <if test="onlyUnpublished">AND d.status IN ('draft', 'in_review')</if>
+        <if test="q != null and q != ''">AND d.title LIKE CONCAT('%', #{q}, '%')</if>
+    </sql>
+
+    <select id="listReviews" resultType="us.minitv.admin.core.model.AdminCoreReviewRow">
+        SELECT d.id, d.title, d.cover_url, d.status, d.review_state, d.review_note,
+               d.free_episode_count, d.submitted_at, d.reviewed_at,
+               s.id AS supplier_id, s.name AS supplier_name,
+               s.contact_email AS supplier_contact_email,
+               COALESCE(ep.episode_count, 0) AS episode_count
+        FROM dramas d
+        LEFT JOIN suppliers s ON s.id = d.supplier_id
+        LEFT JOIN (
+            SELECT drama_id, COUNT(*) AS episode_count
+            FROM episodes
+            GROUP BY drama_id
+        ) ep ON ep.drama_id = d.id
+        <include refid="reviewWhere"/>
+        ORDER BY (d.submitted_at IS NULL) ASC, d.submitted_at DESC, d.id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countReviews" resultType="long">
+        SELECT COUNT(*)
+        FROM dramas d
+        <include refid="reviewWhere"/>
+    </select>
+
+</mapper>

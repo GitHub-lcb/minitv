@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="us.minitv.partner.mapper.PartnerDramaMapper">
+
+    <sql id="columns">
+        id, title, synopsis, cover_url, free_episode_count, coin_price_per_episode,
+        status, country_allowlist, age_rating, created_at, updated_at, published_at,
+        scheduled_publish_at, play_count, supplier_id, review_state, review_note,
+        submitted_at, reviewed_at, reviewed_by
+    </sql>
+
+    <sql id="listFilters">
+        supplier_id = #{supplierId}
+        <if test="status != null and status != ''">AND status = #{status}</if>
+        <if test="reviewState != null and reviewState != ''">AND review_state = #{reviewState}</if>
+        <if test="q != null and q != ''">AND title LIKE CONCAT('%', #{q}, '%')</if>
+    </sql>
+
+    <select id="findById" resultType="us.minitv.content.row.DramaRow">
+        SELECT <include refid="columns"/> FROM dramas WHERE id = #{id}
+    </select>
+
+    <select id="findOwned" resultType="us.minitv.content.row.DramaRow">
+        SELECT <include refid="columns"/> FROM dramas
+        WHERE id = #{dramaId} AND supplier_id = #{supplierId}
+    </select>
+
+    <select id="findOwnedByTitle" resultType="us.minitv.content.row.DramaRow">
+        SELECT <include refid="columns"/> FROM dramas
+        WHERE supplier_id = #{supplierId} AND title = #{title}
+        ORDER BY id LIMIT 1
+    </select>
+
+    <select id="findOwnedByTitleExcluding" resultType="us.minitv.content.row.DramaRow">
+        SELECT <include refid="columns"/> FROM dramas
+        WHERE supplier_id = #{supplierId} AND title = #{title} AND id &lt;&gt; #{excludeId}
+        ORDER BY id LIMIT 1
+    </select>
+
+    <select id="listOwned" resultType="us.minitv.content.row.DramaRow">
+        SELECT <include refid="columns"/> FROM dramas
+        WHERE <include refid="listFilters"/>
+        ORDER BY updated_at DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countOwned" resultType="long">
+        SELECT COUNT(*) FROM dramas
+        WHERE <include refid="listFilters"/>
+    </select>
+
+    <select id="listBySupplier" resultType="us.minitv.content.row.DramaRow">
+        SELECT <include refid="columns"/> FROM dramas
+        WHERE supplier_id = #{supplierId}
+        ORDER BY id
+    </select>
+
+    <select id="statusCounts" resultType="map">
+        SELECT status AS status, COUNT(id) AS cnt
+        FROM dramas WHERE supplier_id = #{supplierId}
+        GROUP BY status
+    </select>
+
+    <select id="reviewCounts" resultType="map">
+        SELECT review_state AS reviewState, COUNT(id) AS cnt
+        FROM dramas WHERE supplier_id = #{supplierId}
+        GROUP BY review_state
+    </select>
+
+    <select id="countStage" resultType="long">
+        SELECT COUNT(*) FROM dramas
+        WHERE supplier_id = #{supplierId}
+        <if test="statuses != null and statuses.size() > 0">
+            AND status IN
+            <foreach collection="statuses" item="value" open="(" separator="," close=")">#{value}</foreach>
+        </if>
+        <if test="reviewStates != null and reviewStates.size() > 0">
+            AND review_state IN
+            <foreach collection="reviewStates" item="state" open="(" separator="," close=")">#{state}</foreach>
+        </if>
+    </select>
+
+    <insert id="insertDrama" parameterType="us.minitv.content.row.DramaRow"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO dramas (
+            title, synopsis, cover_url, free_episode_count, coin_price_per_episode,
+            status, country_allowlist, age_rating, play_count, supplier_id, review_state
+        ) VALUES (
+            #{title}, #{synopsis}, #{coverUrl}, #{freeEpisodeCount}, #{coinPricePerEpisode},
+            #{status}, #{countryAllowlist}, #{ageRating,jdbcType=INTEGER}, #{playCount},
+            #{supplierId}, #{reviewState}
+        )
+    </insert>
+
+    <update id="updateDrama">
+        UPDATE dramas
+        <set>
+            <if test="row.title != null">title = #{row.title},</if>
+            <if test="row.synopsis != null">synopsis = #{row.synopsis},</if>
+            <if test="row.coverUrl != null">cover_url = #{row.coverUrl},</if>
+            <if test="row.freeEpisodeCount != null">free_episode_count = #{row.freeEpisodeCount},</if>
+            <if test="row.countryAllowlist != null">country_allowlist = #{row.countryAllowlist},</if>
+            <if test="ageRatingSet or row.ageRating != null">age_rating = #{row.ageRating,jdbcType=INTEGER},</if>
+            <if test="row.reviewState != null">review_state = #{row.reviewState},</if>
+            <if test="reviewNoteSet or row.reviewNote != null">review_note = #{row.reviewNote,jdbcType=VARCHAR},</if>
+            updated_at = NOW()
+        </set>
+        WHERE id = #{row.id}
+    </update>
+
+    <update id="updateCoverUrl">
+        UPDATE dramas SET cover_url = #{coverUrl}, updated_at = NOW() WHERE id = #{id}
+    </update>
+
+    <update id="updateSubmission">
+        UPDATE dramas
+        SET review_state = #{reviewState}, submitted_at = #{submittedAt}, review_note = NULL, updated_at = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteDrama">
+        DELETE FROM dramas WHERE id = #{id}
+    </delete>
+
+    <select id="tagIds" resultType="long">
+        SELECT tag_id FROM drama_tags WHERE drama_id = #{dramaId} ORDER BY tag_id
+    </select>
+
+    <delete id="deleteDramaTags">
+        DELETE FROM drama_tags WHERE drama_id = #{dramaId}
+    </delete>
+
+    <insert id="insertDramaTag">
+        INSERT INTO drama_tags (drama_id, tag_id) VALUES (#{dramaId}, #{tagId})
+    </insert>
+
+</mapper>

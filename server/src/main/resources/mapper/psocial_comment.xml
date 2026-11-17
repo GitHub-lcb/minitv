@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="us.minitv.psocial.mapper.PSocialCommentMapper">
+
+    <select id="findById" resultType="us.minitv.social.row.CommentRow">
+        SELECT * FROM comments WHERE id = #{id}
+    </select>
+
+    <!-- Claim path: Python used UPDATE ... RETURNING; MySQL needs a row lock first. -->
+    <select id="findForUpdate" resultType="us.minitv.social.row.CommentRow">
+        SELECT * FROM comments WHERE id = #{id} FOR UPDATE
+    </select>
+
+    <select id="listApprovedByDrama" resultType="us.minitv.social.row.CommentRow">
+        SELECT * FROM comments
+        WHERE drama_id = #{dramaId} AND status = 'approved'
+        ORDER BY id DESC
+    </select>
+
+    <select id="listEpisodeComments" resultType="us.minitv.psocial.dto.PSocialCommentView">
+        SELECT c.id AS id,
+               c.user_id AS user_id,
+               c.body AS body,
+               c.status AS status,
+               c.created_at AS created_at,
+               u.public_id AS public_id,
+               u.display_name AS display_name,
+               u.avatar_url AS avatar_url
+        FROM comments c
+        JOIN users u ON u.id = c.user_id
+        WHERE c.episode_id = #{episodeId}
+        <choose>
+            <when test="userId != null">
+                AND (c.status = 'approved'
+                     OR (c.status = 'pending' AND c.user_id = #{userId}))
+            </when>
+            <otherwise>
+                AND c.status = 'approved'
+            </otherwise>
+        </choose>
+        <if test="cursor != null">
+            AND c.id &lt; #{cursor}
+        </if>
+        ORDER BY c.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="countApprovedByEpisode" resultType="long">
+        SELECT COUNT(*) FROM comments
+        WHERE episode_id = #{episodeId} AND status = 'approved'
+    </select>
+
+    <select id="countPendingByEpisodeAndUser" resultType="long">
+        SELECT COUNT(*) FROM comments
+        WHERE episode_id = #{episodeId}
+          AND status = 'pending'
+          AND user_id = #{userId}
+    </select>
+
+    <select id="findRecentId" resultType="java.lang.Long">
+        SELECT id FROM comments
+        WHERE user_id = #{userId}
+          AND episode_id = #{episodeId}
+          AND created_at &gt;= #{since}
+        LIMIT 1
+    </select>
+
+    <select id="countByUserSince" resultType="long">
+        SELECT COUNT(*) FROM comments
+        WHERE user_id = #{userId} AND created_at &gt;= #{since}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO comments
+            (user_id, drama_id, episode_id, body, status, moderation_state, moderation_attempts)
+        VALUES
+            (#{userId}, #{dramaId}, #{episodeId}, #{body}, #{status},
+             #{moderationState,jdbcType=VARCHAR}, #{moderationAttempts})
+    </insert>
+
+    <update id="updateStatus">
+        UPDATE comments SET status = #{status} WHERE id = #{id}
+    </update>
+
+    <update id="markModerationRunning">
+        UPDATE comments
+        SET moderation_state = 'running',
+            moderation_claimed_at = #{now},
+            moderation_attempts = moderation_attempts + 1
+        WHERE id = #{id}
+    </update>
+
+    <update id="markModerationCanceled">
+        UPDATE comments
+        SET moderation_state = 'canceled', moderation_claimed_at = NULL
+        WHERE id = #{id} AND moderation_state = 'running'
+    </update>
+
+    <update id="markModerationFailure">
+        UPDATE comments
+        SET moderation_state = #{state},
+            moderation_error = #{error},
+            moderation_claimed_at = NULL
+        WHERE id = #{id} AND moderation_state = 'running'
+    </update>
+
+    <update id="markModerationSuccess">
+        UPDATE comments
+        SET moderation_state = 'done',
+            moderation_verdict = #{verdict},
+            moderation_score = #{score},
+            moderation_reason = #{reason},
+            moderation_model = #{model},
+            moderated_at = #{moderatedAt},
+            moderation_error = NULL,
+            status = #{status}
+        WHERE id = #{id} AND moderation_state = 'running'
+    </update>
+
+    <select id="findUnprocessedIds" resultType="java.lang.Long">
+        SELECT id FROM comments
+        WHERE moderation_state = 'queued'
+           OR (moderation_state = 'running' AND moderation_claimed_at &lt; #{staleBefore})
+        ORDER BY id
+        LIMIT #{limit}
+    </select>
+
+</mapper>

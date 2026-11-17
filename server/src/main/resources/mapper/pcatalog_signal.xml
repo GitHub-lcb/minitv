@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="us.minitv.pcatalog.mapper.PCatalogSignalMapper">
+
+    <!--
+      Python used count(*) FILTER (WHERE ...) three times over playback_events:
+      MySQL has no FILTER, so every counter becomes SUM(CASE WHEN ... THEN 1 ELSE 0 END).
+    -->
+    <select id="dramaAggregates" resultType="us.minitv.pcatalog.dto.PCatalogDramaAggregate">
+        SELECT e.drama_id AS drama_id,
+               COALESCE(SUM(CASE WHEN pe.kind = 'start' THEN 1 ELSE 0 END), 0) AS plays,
+               COALESCE(SUM(CASE WHEN pe.kind = 'complete' THEN 1 ELSE 0 END), 0) AS completes,
+               COALESCE(SUM(CASE WHEN pe.kind = 'start' AND pe.created_at &gt;= #{shortWindow} THEN 1 ELSE 0 END), 0) AS hot
+        FROM playback_events pe
+        JOIN episodes e ON e.id = pe.episode_id
+        WHERE pe.created_at &gt;= #{longWindow}
+          AND e.drama_id IN
+        <foreach collection="ids" item="dramaId" open="(" separator="," close=")">#{dramaId}</foreach>
+        GROUP BY e.drama_id
+    </select>
+
+    <select id="countEvents" resultType="java.lang.Long">
+        SELECT COUNT(*) FROM playback_events
+        WHERE created_at &gt;= #{since} AND kind = #{kind}
+    </select>
+
+    <select id="progressForUser" resultType="us.minitv.playback.row.PlaybackProgressRow">
+        SELECT * FROM playback_progress WHERE user_id = #{userId}
+    </select>
+
+    <select id="completedEpisodeIds" resultType="java.lang.Long">
+        SELECT DISTINCT episode_id FROM playback_events
+        WHERE user_id = #{userId} AND kind = 'complete'
+    </select>
+
+    <select id="unlockedEpisodeIds" resultType="java.lang.Long">
+        SELECT episode_id FROM entitlements
+        WHERE user_id = #{userId} AND entitlement_type = 'coin'
+    </select>
+
+    <select id="affinityEvents" resultType="us.minitv.pcatalog.dto.PCatalogAffinityEvent">
+        SELECT dt.tag_id AS tag_id,
+               pe.kind AS kind,
+               pe.created_at AS created_at
+        FROM playback_events pe
+        JOIN episodes e ON e.id = pe.episode_id
+        JOIN drama_tags dt ON dt.drama_id = e.drama_id
+        WHERE pe.user_id = #{userId} AND pe.created_at &gt;= #{cutoff}
+    </select>
+
+    <select id="affinityReactions" resultType="us.minitv.pcatalog.dto.PCatalogAffinityReaction">
+        SELECT dt.tag_id AS tag_id,
+               r.created_at AS created_at
+        FROM reactions r
+        JOIN drama_tags dt ON dt.drama_id = r.target_id
+        WHERE r.user_id = #{userId}
+          AND r.target_type = 'drama'
+          AND r.kind IN ('like', 'favorite')
+          AND r.created_at &gt;= #{cutoff}
+    </select>
+
+    <select id="likeTotals" resultType="us.minitv.pcatalog.dto.PCatalogReactionTotal">
+        SELECT target_id AS target_id, COUNT(*) AS total
+        FROM reactions
+        WHERE target_type = 'drama' AND kind = 'like' AND target_id IN
+        <foreach collection="ids" item="dramaId" open="(" separator="," close=")">#{dramaId}</foreach>
+        GROUP BY target_id
+    </select>
+
+    <select id="likedDramaIds" resultType="java.lang.Long">
+        SELECT target_id FROM reactions
+        WHERE user_id = #{userId} AND target_type = 'drama' AND kind = 'like' AND target_id IN
+        <foreach collection="ids" item="dramaId" open="(" separator="," close=")">#{dramaId}</foreach>
+    </select>
+
+    <select id="approvedCommentCounts" resultType="us.minitv.pcatalog.dto.PCatalogCommentCount">
+        SELECT episode_id AS episode_id, COUNT(*) AS total
+        FROM comments
+        WHERE episode_id IN
+        <foreach collection="episodeIds" item="episodeId" open="(" separator="," close=")">#{episodeId}</foreach>
+        AND status = 'approved'
+        GROUP BY episode_id
+    </select>
+
+    <!-- Own pending comments are visible to their author, so they count for that viewer only. -->
+    <select id="pendingCommentCounts" resultType="us.minitv.pcatalog.dto.PCatalogCommentCount">
+        SELECT episode_id AS episode_id, COUNT(*) AS total
+        FROM comments
+        WHERE episode_id IN
+        <foreach collection="episodeIds" item="episodeId" open="(" separator="," close=")">#{episodeId}</foreach>
+        AND status = 'pending' AND user_id = #{userId}
+        GROUP BY episode_id
+    </select>
+
+    <select id="activeSubscriptions" resultType="us.minitv.billing.row.SubscriptionRow">
+        SELECT * FROM subscriptions
+        WHERE user_id = #{userId} AND status = 'active'
+        LIMIT 2
+    </select>
+
+</mapper>

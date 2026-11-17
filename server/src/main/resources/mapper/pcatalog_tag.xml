@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="us.minitv.pcatalog.mapper.PCatalogTagMapper">
+
+    <!-- "main" sorts before "sub": category ASC then id ASC -->
+    <select id="listEnabledOrdered" resultType="us.minitv.content.row.TagRow">
+        SELECT * FROM tags WHERE status = 'enabled' ORDER BY category ASC, id ASC
+    </select>
+
+    <select id="tagsByDramaIds" resultType="us.minitv.pcatalog.dto.PCatalogDramaTag">
+        SELECT dt.drama_id AS drama_id,
+               t.id AS tag_id,
+               t.name_en AS name_en,
+               t.name_zh AS name_zh,
+               t.category AS category,
+               t.status AS status
+        FROM drama_tags dt
+        JOIN tags t ON t.id = dt.tag_id
+        WHERE t.status = 'enabled' AND dt.drama_id IN
+        <foreach collection="ids" item="dramaId" open="(" separator="," close=")">#{dramaId}</foreach>
+        ORDER BY t.id
+    </select>
+
+</mapper>

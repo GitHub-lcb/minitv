@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="us.minitv.pcatalog.mapper.PCatalogHomeGroupMapper">
+
+    <select id="listActiveGroups" resultType="us.minitv.content.row.HomeGroupRow">
+        SELECT * FROM home_groups WHERE status = 'active' ORDER BY position
+    </select>
+
+    <select id="linksByGroupIds" resultType="us.minitv.content.row.DramaHomeGroupRow">
+        SELECT * FROM drama_home_groups
+        WHERE group_id IN
+        <foreach collection="groupIds" item="groupId" open="(" separator="," close=")">#{groupId}</foreach>
+        ORDER BY group_id, position_in_group
+    </select>
+
+    <select id="listOnlineBanners" resultType="us.minitv.ops.row.BannerRow">
+        SELECT * FROM banners WHERE status = 'online' ORDER BY position
+    </select>
+
+</mapper>

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="us.minitv.admin.flow.ops.AFFlowOpsFinanceMapper">
+
+    <sql id="orderConditions">
+        <if test="needle != null">
+            (order_no LIKE #{like}
+             OR external_txn_id LIKE #{like}
+             OR user_id IN (SELECT id FROM users
+                            WHERE email LIKE #{like}
+                               OR display_name LIKE #{like}
+                               OR public_id = #{needle}))
+        </if>
+        <if test="status != null">
+            AND status = #{status}
+        </if>
+        <if test="billingMode != null">
+            AND billing_mode = #{billingMode}
+        </if>
+    </sql>
+
+    <!-- GET /admin/v1/finance/orders: flat order rows, newest first. -->
+    <select id="searchOrders" resultType="us.minitv.billing.row.OrderRow">
+        SELECT * FROM orders
+        <where>
+            <include refid="orderConditions"/>
+        </where>
+        ORDER BY id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countOrders" resultType="long">
+        SELECT COUNT(*) FROM orders
+        <where>
+            <include refid="orderConditions"/>
+        </where>
+    </select>
+
+</mapper>

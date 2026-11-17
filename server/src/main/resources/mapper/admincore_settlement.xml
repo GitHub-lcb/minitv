@@ -1,0 +1,30 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="us.minitv.admin.core.mapper.AdminCoreSettlementMapper">
+
+    <sql id="listWhere">
+        <where>
+            <if test="monthStart != null">AND s.period_start = #{monthStart}</if>
+            <if test="status != null and status != ''">AND s.status = #{status}</if>
+        </where>
+    </sql>
+
+    <select id="list" resultType="us.minitv.admin.core.model.AdminCoreSettlementView">
+        SELECT s.id, s.supplier_id, s.period_start, s.period_end, s.currency,
+               s.gross_cents, s.revenue_cents, s.effective_share_bps, s.order_count,
+               s.status, s.note, s.generated_at, s.confirmed_at, s.paid_at,
+               sp.name AS supplier_name
+        FROM supplier_settlements s
+        LEFT JOIN suppliers sp ON sp.id = s.supplier_id
+        <include refid="listWhere"/>
+        ORDER BY s.period_start DESC, s.id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="count" resultType="long">
+        SELECT COUNT(*)
+        FROM supplier_settlements s
+        <include refid="listWhere"/>
+    </select>
+
+</mapper>

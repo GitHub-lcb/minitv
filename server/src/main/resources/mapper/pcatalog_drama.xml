@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="us.minitv.pcatalog.mapper.PCatalogDramaMapper">
+
+    <select id="findById" resultType="us.minitv.content.row.DramaRow">
+        SELECT * FROM dramas WHERE id = #{id}
+    </select>
+
+    <select id="listPublished" resultType="us.minitv.content.row.DramaRow">
+        SELECT * FROM dramas WHERE status = 'published' ORDER BY updated_at DESC
+    </select>
+
+    <select id="listVisiblePublished" resultType="us.minitv.content.row.DramaRow">
+        SELECT * FROM dramas WHERE status = 'published' ORDER BY id
+    </select>
+
+    <select id="searchPublished" resultType="us.minitv.content.row.DramaRow">
+        SELECT * FROM dramas
+        WHERE status = 'published' AND title LIKE CONCAT('%', #{q}, '%')
+        ORDER BY updated_at DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findPublishedByIds" resultType="us.minitv.content.row.DramaRow">
+        SELECT * FROM dramas
+        WHERE status = 'published' AND id IN
+        <foreach collection="ids" item="dramaId" open="(" separator="," close=")">#{dramaId}</foreach>
+    </select>
+
+</mapper>

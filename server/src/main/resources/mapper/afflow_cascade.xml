@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="us.minitv.admin.flow.content.mapper.AFContentCascadeMapper">
+
+  <select id="listGroupNamesByDrama" resultType="java.lang.String">
+    SELECT g.name
+    FROM home_groups g
+    JOIN drama_home_groups d ON d.group_id = g.id
+    WHERE d.drama_id = #{dramaId}
+  </select>
+
+  <select id="countBannersByDrama" resultType="long">
+    SELECT COUNT(*) FROM banners WHERE drama_id = #{dramaId}
+  </select>
+
+  <select id="countPushRecordsByDrama" resultType="long">
+    SELECT COUNT(*) FROM push_records WHERE drama_id = #{dramaId}
+  </select>
+
+  <select id="countEpisodesByDrama" resultType="long">
+    SELECT COUNT(*) FROM episodes WHERE drama_id = #{dramaId}
+  </select>
+
+  <select id="countByStatus" resultType="long">
+    SELECT COUNT(*) FROM episodes WHERE status = #{status}
+  </select>
+
+  <update id="nullCoinLedgerEpisodeIds">
+    UPDATE coin_ledger SET episode_id = NULL
+    WHERE episode_id IN
+    <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+  </update>
+
+  <delete id="deleteEntitlementsByEpisodeIds">
+    DELETE FROM entitlements
+    WHERE episode_id IN
+    <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+  </delete>
+
+  <delete id="deleteMediaUploadsByEpisodeIds">
+    DELETE FROM media_uploads
+    WHERE episode_id IN
+    <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+  </delete>
+
+  <delete id="deleteCdnPurgesByEpisodeIds">
+    DELETE FROM cdn_purges
+    WHERE episode_id IN
+    <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+  </delete>
+
+  <delete id="deletePlaybackEventsByEpisodeIds">
+    DELETE FROM playback_events
+    WHERE episode_id IN
+    <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+  </delete>
+
+  <delete id="deletePlaybackProgressByEpisodeIds">
+    DELETE FROM playback_progress
+    WHERE episode_id IN
+    <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+  </delete>
+
+  <delete id="deleteCommentsByDrama">
+    DELETE FROM comments WHERE drama_id = #{dramaId}
+  </delete>
+
+  <delete id="deleteEpisodesByDrama">
+    DELETE FROM episodes WHERE drama_id = #{dramaId}
+  </delete>
+
+  <delete id="deleteDramaTagsByDrama">
+    DELETE FROM drama_tags WHERE drama_id = #{dramaId}
+  </delete>
+
+  <delete id="deleteDramaHomeGroupsByDrama">
+    DELETE FROM drama_home_groups WHERE drama_id = #{dramaId}
+  </delete>
+
+  <delete id="deleteBannersByDrama">
+    DELETE FROM banners WHERE drama_id = #{dramaId}
+  </delete>
+
+  <delete id="deletePushRecordsByDrama">
+    DELETE FROM push_records WHERE drama_id = #{dramaId}
+  </delete>
+
+</mapper>

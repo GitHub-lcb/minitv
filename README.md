@@ -95,8 +95,8 @@
 
 | 层 | 选型 |
 | --- | --- |
-| 后端 | FastAPI · SQLAlchemy 2 · Alembic · psycopg3 · PyJWT |
-| 数据 | PostgreSQL 16 · Redis 7 |
+| 后端 | Java 21 · Spring Boot 3.5 · MyBatis · Flyway |
+| 数据 | MySQL 8.4 · Redis 7 |
 | 前端 | React 18 · TypeScript 5 · Vite 5 · Ant Design 5 |
 | App | Flutter（Dart SDK 3.13+，iOS / Android） |
 | 媒体 | Bunny Stream（HLS 转码）· Bunny Storage + Optimizer（封面 / 字幕） |
@@ -108,11 +108,11 @@
 
 ```
 .
-├── backend/            FastAPI 服务
-│   ├── app/modules/    业务模块：account / content / playback / wallet /
-│   │                   billing / social / ops / recommend / analytics
-│   ├── alembic/        数据库迁移
-│   └── tests/          pytest 用例（隔离库，跑前自动建表）
+├── server/             Java 后端（Spring Boot 3 + MyBatis + Flyway + MySQL）
+│   ├── src/main/java/us/minitv/    account / content / playback / wallet /
+│   │                               billing / social / recommend / ops / partner
+│   └── src/main/resources/db/migration/   Flyway MySQL schema
+├── backend/            原 Python FastAPI 实现（只读对照，不再部署）
 ├── admin/              管理后台（React + Ant Design）
 ├── web/                官网营销站（React，含独立隐私政策页）
 ├── h5/                 移动端 Web App（React）
@@ -121,17 +121,20 @@
 ├── scripts/            数据导入、发布、运维脚本
 ├── docs/               架构 / 运营 / 验收文档
 ├── deployments/        发布记录（每次发布自动生成 JSON）
-└── docker-compose.yml  本地 PostgreSQL + Redis
+└── docker-compose.yml  本地 MySQL 8 + Redis 7
 ```
 
 ## 快速开始
 
 ### 前置要求
 
-- Python **3.11+**
-- Node.js **18+**
-- Docker（跑本地 PostgreSQL / Redis）
+- JDK **21**（`java -version`）
+- Maven **3.9+**
+- **MySQL 8**（本机已安装可直接用；Windows 服务名通常是 `MySQL80`）
+- **Redis 7**（本机已安装可直接用；或 Docker）
 - 可选：Flutter 3.x（只在跑 App 时需要）
+
+> 不想动本机数据库的话，也可以用 `docker compose up -d` 起一套 MySQL `:13306` / Redis `:16379`，见第 2 步的备选说明。
 
 ### 1. 拉代码并准备环境变量
 
@@ -141,76 +144,106 @@ cd minitv
 cp .env.example .env
 ```
 
-`.env.example` 默认 `BUNNY_MODE=fake`，播放与封面走本地桩实现 —— **不填任何外部密钥也能把接口和后台跑通**。
+`.env.example` 默认连本机 MySQL `127.0.0.1:3306` 和 Redis `127.0.0.1:6379`，并默认 `BUNNY_MODE=fake`（播放/封面走本地桩实现）—— **不填任何外部密钥也能把接口和后台跑通**。
 
-### 2. 起依赖服务
+### 2. 初始化数据库（本机已装 MySQL 的情况）
 
-```bash
-docker compose up -d      # PostgreSQL :15432 / Redis :16379
+Windows PowerShell（会提示输入 MySQL `root` 密码，密码不会被保存）：
+
+```powershell
+.\scripts\init_mysql.ps1
 ```
 
-### 3. 装后端依赖并建表
+脚本会创建 `minitv` 库、`minitv / minitv_local` 本地账号，并打开 Flyway 建触发器所需的权限。Linux / macOS 手动执行：
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r backend/requirements.txt
-
-cd backend && alembic upgrade head && cd ..
+mysql -u root -p < scripts/init_mysql.sql
 ```
 
-### 4. 启动 API
+确认 `.env` 中：
+
+```dotenv
+DATABASE_URL=mysql://minitv:minitv_local@127.0.0.1:3306/minitv
+REDIS_URL=redis://127.0.0.1:6379/0
+```
+
+如果要用 Docker 的 MySQL/Redis（不改本机数据库）：
 
 ```bash
-.venv/bin/uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 18110
+docker compose up -d          # MySQL :13306 / Redis :16379（带密码）
 ```
 
-健康检查：`curl http://127.0.0.1:18110/health`
+然后把 `.env` 改成：
 
-> 快捷方式：`./scripts/up-local.sh` 会一次性起好 Docker 依赖和 API。
+```dotenv
+DATABASE_URL=mysql://minitv:minitv_local@127.0.0.1:13306/minitv
+REDIS_URL=redis://:minitv_local@127.0.0.1:16379/0
+```
 
-### 5. 启动三个前端
-
-三个终端分别执行：
+### 3. 启动后端（首次启动 Flyway 自动建表）
 
 ```bash
-cd admin && npm install && npm run dev     # http://127.0.0.1:5173
-cd web   && npm install && npm run dev     # http://127.0.0.1:5174
-cd h5    && npm install && npm run dev     # http://127.0.0.1:5175
+cd server
+mvn spring-boot:run
 ```
 
-Vite 已配好代理，`/v1` 与 `/admin/v1` 会自动转发到 `127.0.0.1:18110`，无需额外配置跨域。
-
-### 6. 创建第一个后台账号
+首次启动会在 `minitv` 库里自动建好 47 张表、2 个状态机触发器和 4 个生成列。健康检查：
 
 ```bash
-cd backend
-SEED_ADMIN_PASSWORD='换成你自己的口令' ../.venv/bin/python -m app.seed_admin
+curl http://127.0.0.1:18110/health
+# {"status":"ok","env":"local","mysql":"8.0.x","redis":"..."}
 ```
 
-不带 `SEED_ADMIN_PASSWORD` 时会随机生成一个并打印一次。该脚本只在 `admin_users` 为空时执行，可安全重复运行。
+> 生产形态：`mvn -DskipTests package` 后 `java -jar target/minitv-server-2.0.0.jar`。
+> 后端只需启动一次；改代码后 Spring Boot 重启即可（Flyway 不会重复建表）。
 
-打开 <http://127.0.0.1:5173>，用这个账号登录。
+### 4. 创建第一个后台账号
+
+后端第一次启动、表建好之后执行一次（`admin_users` 为空时才创建，可安全重复运行）。命令本身不占 18110 端口，但会和正在运行的后端共用 Maven 的 `target/`，所以建议先停掉正在运行的后端再执行：
+
+```powershell
+cd server
+$env:SEED_ADMIN_PASSWORD = "换成你自己的口令"; $env:SEED_ADMIN_RUN = "1"
+mvn spring-boot:run "-Dspring-boot.run.arguments=--spring.main.web-application-type=none"
+```
+
+Linux / macOS：
+
+```bash
+cd server
+SEED_ADMIN_PASSWORD='换成你自己的口令' SEED_ADMIN_RUN=1 \
+  mvn spring-boot:run -Dspring-boot.run.arguments="--spring.main.web-application-type=none"
+```
+
+不带 `SEED_ADMIN_PASSWORD` 时会随机生成一个并打印一次。默认用户名 `admin`。
+
+### 5. 启动三个前端（各开一个终端）
+
+首次需要 `npm install`，之后只需 `npm run dev`：
+
+```bash
+cd admin && npm install && npm run dev     # 管理后台 http://localhost:5173
+cd web   && npm install && npm run dev     # 官网     http://localhost:5174
+cd h5    && npm install && npm run dev     # H5       http://localhost:5175
+```
+
+Vite 已配好代理，`/v1` 与 `/admin/v1` 自动转发到 `127.0.0.1:18110`，无需额外配置跨域。
+
+打开 <http://localhost:5173>，用第 4 步创建的 `admin` 账号登录。
+
+> Windows 下也可以一条命令拉起 4 个窗口（后端 + 三个前端）：`.\scripts\start-dev.ps1`；
+> 只启动后端用 `-NoFrontends`，只启动前端用 `-NoBackend`。
 
 ### 本地端口一览
 
-| 服务 | 地址 |
-| --- | --- |
-| API | <http://127.0.0.1:18110> |
-| 管理后台 | <http://127.0.0.1:5173> |
-| 官网 | <http://127.0.0.1:5174> |
-| H5 | <http://127.0.0.1:5175> |
-| PostgreSQL | `127.0.0.1:15432` |
-| Redis | `127.0.0.1:16379` |
-
-### 可选：灌一些演示数据
-
-```bash
-cd backend
-../.venv/bin/python -m app.seed_rewards          # 签到 / 任务基线配置
-../.venv/bin/python -m app.seed_users --count 20 # 假 C 端用户与钱包
-../.venv/bin/python -m app.seed_catalog_episodes # 从本地片库导入剧集（需自备 catalog）
-```
+| 服务 | 本机安装（默认） | Docker 备选 |
+| --- | --- | --- |
+| API | <http://127.0.0.1:18110> | 同左 |
+| 管理后台 | <http://localhost:5173> | 同左 |
+| 官网 | <http://localhost:5174> | 同左 |
+| H5 | <http://localhost:5175> | 同左 |
+| MySQL | `127.0.0.1:3306` | `127.0.0.1:13306` |
+| Redis | `127.0.0.1:6379` | `127.0.0.1:16379`（带密码） |
 
 ### 环境自检
 
@@ -218,8 +251,16 @@ cd backend
 python3 scripts/check_local_env.py
 ```
 
-检查 `.env`、PostgreSQL、Redis 与 Python 依赖；Flutter / Android / iOS 工具链单独报告，不影响后端启动。
+检查 `.env`、MySQL、Redis 与 `/health`；Flutter / Android 工具链单独报告，不影响后端启动。
 
+### 常见问题
+
+- **打开前端报 `ERR_CONNECTION_REFUSED`**：Vite 在 Windows / Node 18+ 下通常只监听 `localhost`（IPv6 `::1`），请用 <http://localhost:5173> 而不是 `127.0.0.1`；需要局域网访问时在 `vite.config.ts` 的 `server.host` 里显式设置 `0.0.0.0`。
+- **Windows 找不到 `mysql` 命令**：直接跑 `.\scripts\init_mysql.ps1`（默认用 `C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe`），或加参数 `-MysqlExe "你的 mysql.exe 路径"`。
+- **MySQL80 服务没起来**：以管理员身份执行 `Start-Service MySQL80`，或 `Get-Service MySQL80` 查看状态。
+- **端口被占用**：API 端口在 `.env` 的 `API_PORT`；前端端口在各自的 `vite.config.ts`；MySQL/Redis 端口在 `DATABASE_URL` / `REDIS_URL`。
+- **想清空本地数据重来**：`DROP DATABASE minitv;`，重新执行第 2 步初始化，再启动后端（Flyway 会重新建表）。
+- **MySQL 重启后 Flyway 报触发器权限错误**：`SET GLOBAL log_bin_trust_function_creators = 1` 是运行时变量，重启会失效；在 `my.ini` 的 `[mysqld]` 下加一行 `log_bin_trust_function_creators=1`，或重新执行 `scripts/init_mysql.sql`。
 ## 运行 App
 
 ```bash

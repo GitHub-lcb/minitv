@@ -1,27 +1,35 @@
 name: minitv-local
 
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: minitv-postgres
+  mysql:
+    image: mysql:8.4
+    container_name: minitv-mysql
     restart: unless-stopped
     environment:
-      POSTGRES_USER: minitv
-      POSTGRES_PASSWORD: minitv_local
-      POSTGRES_DB: minitv
+      MYSQL_ROOT_PASSWORD: minitv_root
+      MYSQL_DATABASE: minitv
+      MYSQL_USER: minitv
+      MYSQL_PASSWORD: minitv_local
       TZ: UTC
-      PGTZ: UTC
+    # log-bin-trust-function-creators lets the app user create the status-machine
+    # triggers even though MySQL enables binary logging by default.
+    command:
+      - mysqld
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+00:00
+      - --log-bin-trust-function-creators=1
     ports:
-      - "127.0.0.1:15432:5432"
+      - "127.0.0.1:13306:3306"
     volumes:
-      - minitv_pg:/var/lib/postgresql/data
+      - minitv_mysql:/var/lib/mysql
     networks:
       - minitv
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U minitv -d minitv"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uminitv", "-pminitv_local"]
       interval: 5s
       timeout: 5s
-      retries: 20
+      retries: 30
 
   redis:
     image: redis:7-alpine
@@ -50,5 +58,5 @@ networks:
         - subnet: 10.88.20.0/24
 
 volumes:
-  minitv_pg:
+  minitv_mysql:
   minitv_redis:

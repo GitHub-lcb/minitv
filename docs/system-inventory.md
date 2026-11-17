@@ -8,8 +8,8 @@
 | 项 | 现状 |
 |---|---|
 | 形态 | 4 个端：官网 `minitv.us`、H5 `h5.minitv.us`、Flutter App、后台 `admin.minitv.us` |
-| 后端 | 单个 FastAPI 单体：**51 个 C 端接口 + 75 个后台接口**，同一进程跑 2 个后台线程任务 |
-| 外部依赖 | Stripe（收款）、Bunny Stream/Storage（视频/图片/CDN）、Resend（邮件）、OpenAI 兼容 LLM（评论审核）、PostgreSQL、Redis |
+| 后端 | 单个 Spring Boot 单体：**51 个 C 端接口 + 75 个后台接口**，同一进程跑 2 个后台线程任务 |
+| 外部依赖 | Stripe（收款）、Bunny Stream/Storage（视频/图片/CDN）、Resend（邮件）、OpenAI 兼容 LLM（评论审核）、MySQL 8、Redis |
 | 内容规模 | 已发布 **103 部剧 / 1,216 集**；另有 1 集 `in_review`、1 集 `transcode_failed` |
 | 用户规模 | 23 个 C 端用户、8 个有效会员、9 笔已支付订单（$230.53） |
 | 互动规模 | 3 条已通过评论；近 7 天 341 次 start / 950 次 progress / 116 次 complete |
@@ -108,7 +108,7 @@
 - 幂等：金币/签到/任务/订单回调全部靠数据库唯一约束，不靠内存；解锁要求 `Idempotency-Key`。
 - 审计：后台改价、改资料、调币、审核策略都写 `audit_log`。
 - 后台线程：Bunny 转码对账（轮询）、评论审核 worker（带失败重试与 sweeper）。
-- 健康检查 `/health` 同时探 PostgreSQL 与 Redis。
+- 健康检查 `/health` 同时探 MySQL 8 与 Redis。
 - 发布：`scripts/release.py` 统一走共享锁 + 自动版本号，R2 双桶（`minitv-web` / `minitv-h5`）+ 服务器部署。
 
 ---

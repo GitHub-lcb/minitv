@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="us.minitv.psocial.mapper.PSocialContentMapper">
+
+    <select id="findEpisodeById" resultType="us.minitv.content.row.EpisodeRow">
+        SELECT * FROM episodes WHERE id = #{id}
+    </select>
+
+    <select id="findDramaById" resultType="us.minitv.content.row.DramaRow">
+        SELECT * FROM dramas WHERE id = #{id}
+    </select>
+
+    <select id="listPublishedDramasByIds" resultType="us.minitv.content.row.DramaRow">
+        SELECT * FROM dramas
+        WHERE id IN
+        <foreach collection="ids" item="item" open="(" separator="," close=")">
+            #{item}
+        </foreach>
+          AND status = 'published'
+    </select>
+
+    <select id="listPublishedEpisodeCounts" resultType="us.minitv.psocial.dto.PSocialDramaCount">
+        SELECT drama_id AS drama_id, COUNT(*) AS total
+        FROM episodes
+        WHERE drama_id IN
+        <foreach collection="ids" item="item" open="(" separator="," close=")">
+            #{item}
+        </foreach>
+          AND status = 'published'
+        GROUP BY drama_id
+    </select>
+
+</mapper>

@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="us.minitv.partner.mapper.PartnerAdminApiKeyMapper">
+
+    <sql id="columns">
+        id, admin_user_id, name, key_prefix, key_hash, scopes, status, expires_at,
+        last_used_at, created_by, created_at, revoked_at, revoked_by, revoke_reason
+    </sql>
+
+    <select id="listByAdminUser" resultType="us.minitv.ops.row.AdminApiKeyRow">
+        SELECT <include refid="columns"/> FROM admin_api_keys
+        WHERE admin_user_id = #{adminUserId}
+        ORDER BY id DESC
+    </select>
+
+    <select id="findById" resultType="us.minitv.ops.row.AdminApiKeyRow">
+        SELECT <include refid="columns"/> FROM admin_api_keys WHERE id = #{id}
+    </select>
+
+    <select id="findByAdminUserAndId" resultType="us.minitv.ops.row.AdminApiKeyRow">
+        SELECT <include refid="columns"/> FROM admin_api_keys
+        WHERE admin_user_id = #{adminUserId} AND id = #{id}
+    </select>
+
+    <select id="findByPrefix" resultType="us.minitv.ops.row.AdminApiKeyRow">
+        SELECT <include refid="columns"/> FROM admin_api_keys WHERE key_prefix = #{prefix}
+    </select>
+
+    <insert id="insertKey" parameterType="us.minitv.ops.row.AdminApiKeyRow"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO admin_api_keys (
+            admin_user_id, name, key_prefix, key_hash, scopes, status, expires_at, created_by
+        ) VALUES (
+            #{adminUserId}, #{name}, #{keyPrefix}, #{keyHash}, #{scopes}, #{status},
+            #{expiresAt,jdbcType=TIMESTAMP}, #{createdBy,jdbcType=BIGINT}
+        )
+    </insert>
+
+    <update id="updateKeyFields">
+        UPDATE admin_api_keys
+        <set>
+            <if test="name != null">name = #{name},</if>
+            <if test="scopes != null">scopes = #{scopes},</if>
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <update id="revokeKey">
+        UPDATE admin_api_keys
+        SET status = 'revoked',
+            revoked_at = #{revokedAt},
+            revoked_by = #{revokedBy,jdbcType=BIGINT},
+            revoke_reason = #{revokeReason,jdbcType=VARCHAR}
+        WHERE id = #{id}
+    </update>
+
+</mapper>

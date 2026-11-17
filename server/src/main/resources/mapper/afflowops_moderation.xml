@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="us.minitv.admin.flow.ops.AFFlowOpsModerationMapper">
+
+    <!-- Moderation queue rows; the tab counters reuse the same filters minus status. -->
+    <select id="searchComments" resultType="us.minitv.social.row.CommentRow">
+        SELECT * FROM comments
+        <where>
+            <if test="status != null">
+                status = #{status}
+            </if>
+            <if test="dramaId != null">
+                AND drama_id = #{dramaId}
+            </if>
+            <if test="episodeId != null">
+                AND episode_id = #{episodeId}
+            </if>
+            <if test="like != null">
+                AND body LIKE #{like}
+            </if>
+        </where>
+        ORDER BY id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countComments" resultType="long">
+        SELECT COUNT(*) FROM comments
+        <where>
+            <if test="status != null">
+                status = #{status}
+            </if>
+            <if test="dramaId != null">
+                AND drama_id = #{dramaId}
+            </if>
+            <if test="episodeId != null">
+                AND episode_id = #{episodeId}
+            </if>
+            <if test="like != null">
+                AND body LIKE #{like}
+            </if>
+        </where>
+    </select>
+
+    <!-- Counts per status with the status filter intentionally omitted. -->
+    <select id="statusCounts" resultType="java.util.Map">
+        SELECT status, COUNT(*) AS cnt FROM comments
+        <where>
+            <if test="dramaId != null">
+                drama_id = #{dramaId}
+            </if>
+            <if test="episodeId != null">
+                AND episode_id = #{episodeId}
+            </if>
+            <if test="like != null">
+                AND body LIKE #{like}
+            </if>
+        </where>
+        GROUP BY status
+    </select>
+
+</mapper>

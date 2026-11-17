@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  PATCH /v1/me writes only the JSON keys the client actually sent, mirroring
+  Pydantic's model_dump(exclude_none=True) + setattr loop in public_flow.py.
+  A dynamic <set> cannot be expressed cleanly with annotations, hence XML.
+-->
+<mapper namespace="us.minitv.paccount.PAccountUserMapper">
+
+    <update id="updateProfile">
+        UPDATE users
+        <set>
+            <if test="displayName != null">display_name = #{displayName},</if>
+            <if test="avatarUrl != null">avatar_url = #{avatarUrl},</if>
+            <if test="gender != null">gender = #{gender},</if>
+            <if test="bio != null">bio = #{bio},</if>
+            <if test="birthday != null">birthday = #{birthday},</if>
+            <if test="region != null">region = #{region},</if>
+            <if test="locale != null">locale = #{locale},</if>
+            updated_at = now()
+        </set>
+        WHERE id = #{id}
+    </update>
+
+</mapper>

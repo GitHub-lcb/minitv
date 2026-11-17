@@ -17,6 +17,9 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+# Java service build output
+server/target/
+server/deps-cp.txt
 
 # local data cache (derived, regenerable)
 data/.cache/

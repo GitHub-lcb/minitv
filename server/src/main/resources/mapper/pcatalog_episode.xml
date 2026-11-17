@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="us.minitv.pcatalog.mapper.PCatalogEpisodeMapper">
+
+    <select id="publishedPlayable" resultType="us.minitv.content.row.EpisodeRow">
+        SELECT * FROM episodes
+        WHERE drama_id = #{dramaId} AND status = 'published' AND bunny_video_id &lt;&gt; ''
+        ORDER BY episode_number
+    </select>
+
+    <select id="countByDrama" resultType="long">
+        SELECT COUNT(*) FROM episodes WHERE drama_id = #{dramaId}
+    </select>
+
+    <!-- Python: count(*) and count(*) FILTER (episode_number <= dramas.free_episode_count) -->
+    <select id="publishedPlayableCounters" resultType="us.minitv.pcatalog.dto.PCatalogEpisodeCounter">
+        SELECT e.drama_id AS drama_id,
+               COUNT(*) AS episode_count,
+               COALESCE(SUM(CASE WHEN e.episode_number &lt;= d.free_episode_count THEN 1 ELSE 0 END), 0) AS free_playable_count
+        FROM episodes e
+        JOIN dramas d ON d.id = e.drama_id
+        WHERE e.status = 'published' AND e.bunny_video_id &lt;&gt; ''
+        GROUP BY e.drama_id
+    </select>
+
+    <select id="playableByDramaIds" resultType="us.minitv.content.row.EpisodeRow">
+        SELECT * FROM episodes
+        WHERE drama_id IN
+        <foreach collection="ids" item="dramaId" open="(" separator="," close=")">#{dramaId}</foreach>
+        AND status = 'published' AND bunny_video_id &lt;&gt; ''
+        ORDER BY drama_id, episode_number
+    </select>
+
+    <!-- Python: count(*) and count(*) FILTER (status = 'published') over all episodes -->
+    <select id="episodeCountsByDramaIds" resultType="us.minitv.pcatalog.dto.PCatalogEpisodeCounts">
+        SELECT drama_id AS drama_id,
+               COUNT(*) AS total,
+               COALESCE(SUM(CASE WHEN status = 'published' THEN 1 ELSE 0 END), 0) AS published
+        FROM episodes
+        WHERE drama_id IN
+        <foreach collection="ids" item="dramaId" open="(" separator="," close=")">#{dramaId}</foreach>
+        GROUP BY drama_id
+    </select>
+
+    <select id="playableByIds" resultType="us.minitv.content.row.EpisodeRow">
+        SELECT * FROM episodes
+        WHERE id IN
+        <foreach collection="ids" item="episodeId" open="(" separator="," close=")">#{episodeId}</foreach>
+        AND status = 'published' AND bunny_video_id &lt;&gt; ''
+    </select>
+
+</mapper>

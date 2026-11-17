@@ -2,7 +2,7 @@
 
 状态：已采纳基础设施约束，供研发评审  
 日期：2026-10-13  
-技术约束：美国区服务器、FastAPI、Bunny Storage / Stream / CDN、Cloudflare R2 前端静态托管  
+技术约束：美国区服务器、Spring Boot、Bunny Storage / Stream / CDN、Cloudflare R2 前端静态托管  
 读者：客户端、后端、管理后台、测试  
 依据：App 设计稿 file `735952778351359`，官网与管理后台设计稿 file `735989669924027`  
 配套文档：[技术架构](technical-architecture.md)、[前后端开发文档](../output/minitv-devdoc-20261013/stage3/MiniTV%20前后端开发文档.docx)
@@ -27,7 +27,7 @@ flowchart LR
     App[iOS / Android]
     Web[营销官网]
     Admin[管理后台]
-    API[美国区 FastAPI]
+    API[美国区 Spring Boot]
     Bunny[Bunny Storage / Stream / CDN]
     R2[Cloudflare R2 前端页面]
     Pay[订阅支付适配层]
@@ -64,7 +64,7 @@ flowchart TB
     end
 
     subgraph Edge
-        GW[FastAPI Gateway]
+        GW[Spring Boot Gateway]
         BunnyCDN[Bunny CDN]
     end
 
@@ -85,7 +85,7 @@ flowchart TB
     end
 
     subgraph Data
-        PG[(PostgreSQL)]
+        PG[(MySQL 8)]
         Redis[(Redis)]
         OBJ[Bunny Storage / Stream]
     end
@@ -122,8 +122,8 @@ flowchart TB
 
 | 容器 | 职责 | 不负责 |
 |---|---|---|
-| FastAPI Gateway | 鉴权、限流、语言、幂等键、请求追踪 | 业务状态判断 |
-| FastAPI 领域模块 | 内容、播放、账号、资产、订阅、互动、运营、统计 | 视频转码和文件分发 |
+| Spring Boot Gateway | 鉴权、限流、语言、幂等键、请求追踪 | 业务状态判断 |
+| Spring Boot 领域模块 | 内容、播放、账号、资产、订阅、互动、运营、统计 | 视频转码和文件分发 |
 | Bunny Stream | 原片存储、转码、HLS、播放流量 | 业务权限判断 |
 | Bunny Storage + CDN | 封面、字幕和图片流量 | 前端 HTML、正片转码 |
 | Cloudflare R2 | 官网和管理后台 HTML、CSS、JS | 视频、封面原文件、业务数据 |
@@ -141,21 +141,21 @@ flowchart TB
 
 ## 4. 关键设计决策
 
-### ADR-006：业务计算留在美国区 FastAPI，媒体交给 Bunny
+### ADR-006：业务计算留在美国区 Spring Boot，媒体交给 Bunny
 
 - 状态：已采纳
 - 上下文：产品面向北美，视频存储和播放流量是主要成本；业务需要强一致的解锁和订阅判断。
-- 决策：API、Worker、PostgreSQL、Redis 部署在美国区。封面和字幕使用 Bunny Storage，经 Bunny CDN 分发。正片上传到 Bunny Stream，由 Bunny 转码并输出 HLS，播放流量全部走 Bunny CDN。前端 HTML、CSS、JS 不放 Bunny。
-- 理由：Bunny Stream 已提供上传、多清晰度转码、自适应播放、目录级 Token 和边缘分发，不需要自建转码集群。FastAPI 继续掌握用户、金币、订阅和内容状态。
-- 后果：业务服务器不中转视频文件。Bunny 不判断用户是否已解锁，正式播放地址仍由 FastAPI 签发短时目录 Token。
+- 决策：API、Worker、MySQL 8、Redis 部署在美国区。封面和字幕使用 Bunny Storage，经 Bunny CDN 分发。正片上传到 Bunny Stream，由 Bunny 转码并输出 HLS，播放流量全部走 Bunny CDN。前端 HTML、CSS、JS 不放 Bunny。
+- 理由：Bunny Stream 已提供上传、多清晰度转码、自适应播放、目录级 Token 和边缘分发，不需要自建转码集群。Spring Boot 继续掌握用户、金币、订阅和内容状态。
+- 后果：业务服务器不中转视频文件。Bunny 不判断用户是否已解锁，正式播放地址仍由 Spring Boot 签发短时目录 Token。
 
 ### ADR-008：前端 HTML 托管在 Cloudflare R2
 
 - 状态：已采纳
 - 上下文：官网和管理后台都是静态前端，发布频繁；视频和图片流量已经由 Bunny 承担。
-- 决策：构建产物上传到 Cloudflare R2，桶的 Location Hint 使用 `ENAM`。生产环境通过自定义域名公开访问，不使用默认的 `r2.dev` 地址。FastAPI 不托管 HTML。
+- 决策：构建产物上传到 Cloudflare R2，桶的 Location Hint 使用 `ENAM`。生产环境通过自定义域名公开访问，不使用默认的 `r2.dev` 地址。Spring Boot 不托管 HTML。
 - 理由：R2 适合静态文件，出站流量不计费；页面与视频分属两个供应商，页面发布不会触发 Bunny 视频缓存清理。
-- 后果：前端只通过 HTTPS API 访问美国区 FastAPI。R2 桶不保存用户数据、视频原片和密钥。发布时保留上一版构建目录，便于回滚。
+- 后果：前端只通过 HTTPS API 访问美国区 Spring Boot。R2 桶不保存用户数据、视频原片和密钥。发布时保留上一版构建目录，便于回滚。
 
 ### ADR-007：美国区只作为业务区域，不作为播放边缘
 
@@ -163,13 +163,13 @@ flowchart TB
 - 上下文：服务器要求位于美国，但用户分布在北美多个网络。
 - 决策：计算与主数据固定在美国东部。Bunny Storage 主区使用 New York，复制到 Los Angeles。播放由 Bunny 全球边缘节点就近分发。
 - 理由：上传和回调靠近业务服务器，西海岸复制降低美国西部回源延迟，边缘节点承担播放流量。
-- 后果：数据库不跨云区域做同步写入。新增区域前先评估 Bunny 复制区，不先拆 FastAPI。
+- 后果：数据库不跨云区域做同步写入。新增区域前先评估 Bunny 复制区，不先拆 Spring Boot。
 
 ### ADR-001：播放授权与内容查询分离
 
 - 状态：已采纳
 - 上下文：免费集要快速起播，锁定集又必须防止绕过客户端直接获取地址。
-- 决策：内容接口只返回可见元数据；正式播放地址只由 FastAPI 播放模块签发 Bunny 目录级 HMAC Token，默认 5 分钟过期，并校验地区、年龄分级、上架状态、会员或解锁记录。
+- 决策：内容接口只返回可见元数据；正式播放地址只由 Spring Boot 播放模块签发 Bunny 目录级 HMAC Token，默认 5 分钟过期，并校验地区、年龄分级、上架状态、会员或解锁记录。
 - 理由：把“看不看得见”和“能不能播”分开，避免详情接口泄露付费地址。
 - 后果：播放前多一次授权调用。推荐流可对当前免费集预签发，但地址仍必须短时有效。
 
@@ -185,7 +185,7 @@ flowchart TB
 
 - 状态：已采纳
 - 上下文：上传、转码和审核不能阻塞运营操作，但下架必须立即在客户端生效。
-- 决策：原片直传 Bunny Stream。Bunny 完成转码后回调 FastAPI，分集进入审核中。上架、下架写入内容状态并同步失效播放授权缓存。下架时调用 Bunny Purge 清理封面和播放缓存。
+- 决策：原片直传 Bunny Stream。Bunny 完成转码后回调 Spring Boot，分集进入审核中。上架、下架写入内容状态并同步失效播放授权缓存。下架时调用 Bunny Purge 清理封面和播放缓存。
 - 理由：媒体处理天然异步，授权判断必须同步。
 - 后果：转码失败可重试且状态可见；下架后已签发地址最多存活到其过期时间，建议不超过 5 分钟。
 
@@ -300,7 +300,7 @@ sequenceDiagram
     C->>C: 更新可见状态并失效授权缓存
 ```
 
-上传限制：MP4 / MOV、单文件不超过 200MB。**横版与竖版都接受**，方向不是上传门槛（运营会传横屏素材），仅在元数据里记录分辨率与 `vertical`。Bunny Stream 自动生成自适应清晰度，播放页展示 360P、720P；1080P 是否仅向会员签发仍是待确认项，FastAPI 按权益选择可返回的档位，不在客户端写死。
+上传限制：MP4 / MOV、单文件不超过 200MB。**横版与竖版都接受**，方向不是上传门槛（运营会传横屏素材），仅在元数据里记录分辨率与 `vertical`。Bunny Stream 自动生成自适应清晰度，播放页展示 360P、720P；1080P 是否仅向会员签发仍是待确认项，Spring Boot 按权益选择可返回的档位，不在客户端写死。
 
 ### 6.4 订阅状态
 
@@ -310,7 +310,7 @@ sequenceDiagram
 
 ## 7. 接口边界
 
-后端使用 FastAPI，对外统一使用 `/v1`，管理接口使用 `/admin/v1`。Gateway、领域模块和 Worker 共享同一套 Pydantic 模型与服务层，可在一个 Python 项目中按模块部署，也可拆成多个进程。所有写请求携带 `Idempotency-Key` 和 `X-Request-Id`。
+后端使用 Spring Boot，对外统一使用 `/v1`，管理接口使用 `/admin/v1`。Gateway、领域模块和 Worker 共享同一套 Jackson / Bean Validation 模型与服务层，可在一个 Python 项目中按模块部署，也可拆成多个进程。所有写请求携带 `Idempotency-Key` 和 `X-Request-Id`。
 
 | 分组 | 代表接口 | 所属服务 | 一致性 |
 |---|---|---|---|
@@ -328,7 +328,7 @@ sequenceDiagram
 
 | 存储 | 数据 | 原因 |
 |---|---|---|
-| PostgreSQL | 用户、剧集、分集、订单、流水、订阅、配置 | 需要事务和唯一约束 |
+| MySQL 8 | 用户、剧集、分集、订单、流水、订阅、配置 | 需要事务和唯一约束 |
 | Redis | 播放授权缓存、验证码、限流、热点首页 | 短期状态和热点读 |
 | Bunny Stream | 原片、转码产物、HLS 分片 | 正片存储和播放流量 |
 | Bunny Storage | 封面、字幕 | 图片流量走 Bunny CDN |
@@ -363,7 +363,7 @@ sequenceDiagram
 | 内容库 | 约 1,200 部剧，单部 55 至 78 集 |
 | 推荐起播 | 已缓存免费内容时，授权与地址签发不依赖转码链路 |
 | 上传 | 200MB 原片直传对象存储，API 不中转文件；横版 / 竖版视频都接受，方向不做门槛 |
-| 转码 | Bunny Stream 转码，FastAPI 只接收回调并重试状态回写 |
+| 转码 | Bunny Stream 转码，Spring Boot 只接收回调并重试状态回写 |
 | 看板 | 允许 1 至 5 分钟延迟 |
 | 播放地址 | 建议 5 分钟过期，下架时主动失效缓存 |
 
@@ -379,8 +379,8 @@ sequenceDiagram
 ```mermaid
 flowchart LR
     subgraph USEast[美国东部业务区]
-        API[FastAPI API 与 Worker]
-        DB[(PostgreSQL)]
+        API[Spring Boot API 与 Worker]
+        DB[(MySQL 8)]
         Cache[(Redis)]
         Storage[Bunny Storage 主区 New York]
     R2[Cloudflare R2 ENAM]
@@ -401,9 +401,9 @@ flowchart LR
     CDN --> Replica
 ```
 
-客户端通过应用商店分发。官网和管理后台的 HTML、CSS、JS 发布到 Cloudflare R2，使用自定义域名访问。管理后台 API 只访问美国区 FastAPI。公开 API 与后台 API 可以使用同一个 FastAPI 进程，通过路由依赖分开限流和权限。
+客户端通过应用商店分发。官网和管理后台的 HTML、CSS、JS 发布到 Cloudflare R2，使用自定义域名访问。管理后台 API 只访问美国区 Spring Boot。公开 API 与后台 API 可以使用同一个 Spring Boot 进程，通过路由依赖分开限流和权限。
 
-FastAPI 运行时使用 Uvicorn 和多 Worker。异步任务使用进程内队列或 Redis 队列，不把视频二进制读入 API 进程。Bunny 回调接口单独限流，并校验 Bunny 签名或共享密钥。
+Spring Boot 运行时使用 内嵌 Tomcat 和多 Worker。异步任务使用进程内队列或 Redis 队列，不把视频二进制读入 API 进程。Bunny 回调接口单独限流，并校验 Bunny 签名或共享密钥。
 
 环境至少分为开发、预发、生产。生产配置不写入客户端安装包，价格、文案、下载地址和功能开关从服务端读取。
 
@@ -456,7 +456,7 @@ FastAPI 运行时使用 Uvicorn 和多 Worker。异步任务使用进程内队�
 | 支付渠道 | 订阅服务后留支付适配层 | 影响回调协议和取消订阅入口 |
 | Download 按钮 | 播放设置保留不可用状态，不建下载服务 | 产品确认后可能隐藏或延期 |
 | 年龄分级标准 | 内容保留地区和分级字段 | 影响播放授权规则 |
-| 1080P 权益 | Bunny 可产出多档，FastAPI 按权益签发 | 影响播放流量成本和会员权益 |
+| 1080P 权益 | Bunny 可产出多档，Spring Boot 按权益签发 | 影响播放流量成本和会员权益 |
 | 官网数据条 | 独立营销配置 | 不应直接读取实时统计 |
 
 这些项目确认前，不新增对应服务，也不把临时枚举写死在客户端。

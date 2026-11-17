@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="us.minitv.admin.flow.ops.AFFlowOpsUserMapper">
+
+    <!-- GET /admin/v1/users: same `q` matching and 50-row cap as flow_router.list_users. -->
+    <select id="searchUsers" resultType="us.minitv.account.row.UserRow">
+        SELECT * FROM users
+        <where>
+            <if test="needle != null">
+                (display_name LIKE #{like} OR public_id = #{needle} OR email LIKE #{like})
+            </if>
+        </where>
+        ORDER BY id DESC
+        LIMIT 50
+    </select>
+
+</mapper>

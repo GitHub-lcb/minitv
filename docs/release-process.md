@@ -107,7 +107,7 @@ PUT /accounts/{account}/r2/buckets/minitv-h5/policy?access=CnamesOnly&cname=h5.m
 - 目标服务器：`root@YOUR_SERVER_IP`（主机名 `iv-yex8aqiy9s3z47gll3wc`，Byteplus 新加坡）。
   本机免密登录：`ssh byteplus-sg-1`（直连）。如遇代理端点封锁 22 端口的临时情况，处理方式见 `AGENTS.md`。
 
-部署脚本是 `scripts/deploy_server.sh`：rsync `backend/` 到 `/opt/minitv`，首次生成服务器 `.env`（不复制本地开发库口令），安装 PostgreSQL / Redis / Nginx，跑 `alembic upgrade head`，创建三个后台账号，用 systemd `minitv-api` 监听 `127.0.0.1:18110`，Nginx 在 80 端口反代。已有 `.env` 不会被覆盖。Cloudflare 代理下源站用 HTTP 即可。
+部署脚本是 `scripts/deploy_server.sh`：本地 `mvn package` 产出 `minitv-server-2.0.0.jar` 并 scp 到 `/opt/minitv`，首次生成服务器 `.env`（不复制本地开发库口令），安装 MySQL 8 / Redis / Nginx / JDK 21，启动时由 Flyway 自动建表，`SEED_ADMIN_RUN=1` 创建首个后台账号，用 systemd `minitv-api` 跑 jar 并监听 `127.0.0.1:18110`，Nginx 在 80 端口反代。已有 `.env` 不会被覆盖。Cloudflare 代理下源站用 HTTP 即可。
 
 服务器部署接入后统一包一层：
 

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="us.minitv.admin.flow.ops.AFFlowOpsAnalyticsMapper">
+
+    <!--
+        dashboard() refreshes the daily_metrics snapshot cache for the whole
+        window. MySQL has no ON CONFLICT, so this is the equivalent upsert.
+    -->
+    <insert id="upsertDailyMetrics">
+        INSERT INTO daily_metrics (business_day, timezone, active_users, new_users, plays, completes,
+                                   paid_orders, revenue_cents, coin_spend, unlock_count, completion_rate)
+        VALUES
+        <foreach collection="rows" item="row" separator=",">
+            (#{row.businessDay}, #{row.timezone}, #{row.activeUsers}, #{row.newUsers}, #{row.plays},
+             #{row.completes}, #{row.paidOrders}, #{row.revenueCents}, #{row.coinSpend},
+             #{row.unlockCount}, #{row.completionRate})
+        </foreach>
+        ON DUPLICATE KEY UPDATE
+            timezone = VALUES(timezone),
+            active_users = VALUES(active_users),
+            new_users = VALUES(new_users),
+            plays = VALUES(plays),
+            completes = VALUES(completes),
+            paid_orders = VALUES(paid_orders),
+            revenue_cents = VALUES(revenue_cents),
+            coin_spend = VALUES(coin_spend),
+            unlock_count = VALUES(unlock_count),
+            completion_rate = VALUES(completion_rate),
+            updated_at = NOW()
+    </insert>
+
+</mapper>

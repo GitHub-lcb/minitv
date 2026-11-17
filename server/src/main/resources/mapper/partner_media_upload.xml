@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="us.minitv.partner.mapper.PartnerMediaUploadMapper">
+
+    <sql id="columns">
+        id, episode_id, video_id, filename, mime, size_bytes, vertical, status, created_at
+    </sql>
+
+    <select id="findByVideoId" resultType="us.minitv.content.row.MediaUploadRow">
+        SELECT <include refid="columns"/> FROM media_uploads WHERE video_id = #{videoId}
+    </select>
+
+    <select id="findOwnedByVideoId" resultType="us.minitv.content.row.MediaUploadRow">
+        SELECT u.id, u.episode_id, u.video_id, u.filename, u.mime, u.size_bytes,
+               u.vertical, u.status, u.created_at
+        FROM media_uploads u
+        JOIN episodes e ON e.id = u.episode_id
+        JOIN dramas d ON d.id = e.drama_id
+        WHERE u.video_id = #{videoId} AND d.supplier_id = #{supplierId}
+    </select>
+
+    <select id="findLatestByEpisode" resultType="us.minitv.content.row.MediaUploadRow">
+        SELECT <include refid="columns"/> FROM media_uploads
+        WHERE episode_id = #{episodeId}
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
+
+    <select id="findLatestByEpisodeAndVideo" resultType="us.minitv.content.row.MediaUploadRow">
+        SELECT <include refid="columns"/> FROM media_uploads
+        WHERE episode_id = #{episodeId} AND video_id = #{videoId}
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
+
+    <select id="statusesByEpisodes" resultType="map">
+        SELECT episode_id AS episodeId, status AS status
+        FROM media_uploads
+        WHERE episode_id IN
+        <foreach collection="episodeIds" item="episodeId" open="(" separator="," close=")">#{episodeId}</foreach>
+        ORDER BY id
+    </select>
+
+    <insert id="insertUpload" parameterType="us.minitv.content.row.MediaUploadRow"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO media_uploads (
+            episode_id, video_id, filename, mime, size_bytes, vertical, status
+        ) VALUES (
+            #{episodeId}, #{videoId}, #{filename}, #{mime}, #{sizeBytes}, #{vertical}, #{status}
+        )
+    </insert>
+
+    <update id="updateStatus">
+        UPDATE media_uploads SET status = #{status} WHERE id = #{id}
+    </update>
+
+    <update id="updateStatusAndSize">
+        UPDATE media_uploads SET status = #{status}, size_bytes = #{sizeBytes} WHERE id = #{id}
+    </update>
+
+</mapper>
