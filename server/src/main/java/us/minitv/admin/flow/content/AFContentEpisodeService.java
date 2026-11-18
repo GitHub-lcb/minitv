@@ -1,6 +1,7 @@
 package us.minitv.admin.flow.content;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -409,7 +410,15 @@ public class AFContentEpisodeService {
         payload.put("status", status);
         log.setPayload(Json.write(payload));
         audits.insert(log);
-        episodes.deleteById(episode.getId());
+        try {
+            episodes.deleteById(episode.getId());
+        } catch (DataIntegrityViolationException exc) {
+            // Playback / comment / wallet rows reference the episode. Deleting a
+            // row that was ever live would orphan financial or analytic records,
+            // so refuse with an actionable message instead of a 500.
+            throw new ApiException(409, ApiException.detail("episode_has_records",
+                    "第 " + episode.getEpisodeNumber() + " 集已有播放/互动/账务数据，不能删除；请下架保留"));
+        }
     }
 
     // ------------------------------------------------------------------
