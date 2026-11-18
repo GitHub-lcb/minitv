@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 import '../api.dart';
 import '../copy.dart';
@@ -78,6 +79,12 @@ class _EpisodePlayerState extends State<EpisodePlayer> {
   List<HlsVariant> _variants = const [];
   String _loadedQuality = 'auto';
 
+  /// Third-party player URL when the episode is an external embed
+  /// (YouTube / TikTok / Vimeo / Facebook / 抖音 / 通用 iframe). The platform
+  /// owns the surface, so there is no controller, ladder or progress bar.
+  String? _embedUrl;
+  double _embedAspect = 16 / 9;
+
   /// User paused by tapping the video. Kept separate from `active` so swiping
   /// away and back resumes playback, while an explicit pause sticks.
   bool pausedByUser = false;
@@ -97,6 +104,7 @@ class _EpisodePlayerState extends State<EpisodePlayer> {
       heartbeat?.cancel();
       _masterUrl = null;
       _variants = const [];
+      _embedUrl = null;
       unawaited(_load());
       return;
     }
@@ -141,30 +149,51 @@ class _EpisodePlayerState extends State<EpisodePlayer> {
         {'drama_id': widget.dramaId, 'episode_id': widget.episodeId},
       );
       if (auth?['allowed'] == true) {
-        final master = auth!['url'] as String;
-        _masterUrl = master;
-        _variants = await loadHlsVariants(master);
-        widget.onQualities?.call([for (final variant in _variants) variant.label]);
-        _loadedQuality = _effectiveQuality(widget.quality);
+        final type = (auth!['type'] as String?) ?? 'hls';
+        final embedUrl = auth!['embed_url'] as String?;
+        if (type == 'embed' && embedUrl != null && embedUrl.isNotEmpty) {
+          // Third-party players own their controls: load the embed page and
+          // count the open as "start"; there is no heartbeat or completion.
+          _embedUrl = embedUrl;
+          _embedAspect = _aspectFrom(auth!['aspect_ratio']);
+          _masterUrl = null;
+          _variants = const [];
+          widget.onQualities?.call(const []);
+          _report('start', 0);
+        } else {
+          final source = auth!['url'] as String;
+          _embedUrl = null;
+          _masterUrl = source;
+          if (type == 'mp4') {
+            // Progressive MP4: no manifest to parse and no rendition ladder.
+            _variants = const [];
+            widget.onQualities?.call(const []);
+            _loadedQuality = 'auto';
+          } else {
+            _variants = await loadHlsVariants(source);
+            widget.onQualities?.call([for (final variant in _variants) variant.label]);
+            _loadedQuality = _effectiveQuality(widget.quality);
+          }
 
-        await player.load(_urlFor(widget.quality, master));
-        player.removeListener(_checkFinished);
-        if (EpisodePlayer.debugSeekEnd) {
-          final end = player.duration - const Duration(seconds: 2);
-          if (end > Duration.zero) await player.seek(end);
-        } else if (resume > 0) {
-          await player.seek(Duration(seconds: resume));
+          await player.load(_urlFor(widget.quality, source));
+          player.removeListener(_checkFinished);
+          if (EpisodePlayer.debugSeekEnd) {
+            final end = player.duration - const Duration(seconds: 2);
+            if (end > Duration.zero) await player.seek(end);
+          } else if (resume > 0) {
+            await player.seek(Duration(seconds: resume));
+          }
+          player.addListener(_checkFinished);
+          await player.setSpeed(widget.speed);
+          await player.play();
+          // Real analytics: one "start", then a progress heartbeat. Switching
+          // quality mid-episode reloads the surface but is not a new start.
+          _report('start', resume);
+          heartbeat = Timer.periodic(
+            const Duration(seconds: 15),
+            (_) => _report('progress', player.position.inSeconds),
+          );
         }
-        player.addListener(_checkFinished);
-        await player.setSpeed(widget.speed);
-        await player.play();
-        // Real analytics: one "start", then a progress heartbeat. Switching
-        // quality mid-episode reloads the surface but is not a new start.
-        _report('start', resume);
-        heartbeat = Timer.periodic(
-          const Duration(seconds: 15),
-          (_) => _report('progress', player.position.inSeconds),
-        );
       }
       error = null;
     } catch (_) {
@@ -175,6 +204,8 @@ class _EpisodePlayerState extends State<EpisodePlayer> {
 
   /// Swap the rendition without losing the playhead or the play state.
   Future<void> _applyQuality(String quality) async {
+    // Embeds and progressive MP4 files have no rendition ladder to switch.
+    if (_embedUrl != null) return;
     final master = _masterUrl;
     if (master == null) return; // still loading; _load() will honour it
     final target = _urlFor(quality, master);
@@ -241,6 +272,20 @@ class _EpisodePlayerState extends State<EpisodePlayer> {
         child: Text(copy.t('locked'), style: const TextStyle(color: gold, fontSize: 18)),
       );
     }
+    final embedUrl = _embedUrl;
+    if (embedUrl != null) {
+      // The platform player owns the whole surface: no tap overlay (it would
+      // swallow taps meant for YouTube/TikTok controls) and no progress bar.
+      return ColoredBox(
+        color: Colors.black,
+        child: Center(
+          child: AspectRatio(
+            aspectRatio: _embedAspect,
+            child: _EmbedSurface(key: ValueKey(embedUrl), url: embedUrl),
+          ),
+        ),
+      );
+    }
     final controller = player.controller;
     final ready = controller != null && controller.value.isInitialized;
     if (!ready) return const ColoredBox(color: Colors.black);
@@ -276,23 +321,76 @@ class _EpisodePlayerState extends State<EpisodePlayer> {
       children: [
         _surface(),
         // Sits above every state so a tap always reaches the player, and the
-        // play icon marks a paused video.
-        GestureDetector(
-          behavior: HitTestBehavior.translucent,
-          onTap: _togglePlay,
-          child: pausedByUser
-              ? const Center(
-                  child: Icon(
-                    Icons.play_arrow_rounded,
-                    color: Colors.white,
-                    size: 72,
-                    shadows: [Shadow(color: Colors.black54, blurRadius: 12)],
-                  ),
-                )
-              : const SizedBox.expand(),
-        ),
+        // play icon marks a paused video. Embeds must keep their own controls
+        // tappable, so they get no overlay.
+        if (_embedUrl == null)
+          GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: _togglePlay,
+            child: pausedByUser
+                ? const Center(
+                    child: Icon(
+                      Icons.play_arrow_rounded,
+                      color: Colors.white,
+                      size: 72,
+                      shadows: [Shadow(color: Colors.black54, blurRadius: 12)],
+                    ),
+                  )
+                : const SizedBox.expand(),
+          ),
       ],
     );
+  }
+}
+
+/// "9:16" → 0.5625. Falls back to 16:9 for missing or malformed values.
+double _aspectFrom(Object? raw) {
+  if (raw is String) {
+    final parts = raw.split(':');
+    if (parts.length == 2) {
+      final width = double.tryParse(parts[0].trim());
+      final height = double.tryParse(parts[1].trim());
+      if (width != null && height != null && width > 0 && height > 0) {
+        return width / height;
+      }
+    }
+  }
+  return 16 / 9;
+}
+
+/// Hosts a third-party embed page (YouTube / TikTok / Vimeo / Facebook / 抖音 /
+/// generic iframe). The webview is created lazily when an embed episode first
+/// plays, so Bunny-only builds never touch the platform channel.
+class _EmbedSurface extends StatefulWidget {
+  const _EmbedSurface({super.key, required this.url});
+
+  final String url;
+
+  @override
+  State<_EmbedSurface> createState() => _EmbedSurfaceState();
+}
+
+class _EmbedSurfaceState extends State<_EmbedSurface> {
+  late final WebViewController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(Colors.black)
+      // YouTube rejects embedded players without an HTTP Referer (error 153),
+      // and WebView sends none by default. The value only has to be a valid
+      // origin, so the public site doubles as the embed referrer.
+      ..loadRequest(
+        Uri.parse(widget.url),
+        headers: const {'Referer': 'https://minitv.us/'},
+      );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return WebViewWidget(controller: _controller);
   }
 }
 

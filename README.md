@@ -447,7 +447,7 @@ mvn spring-boot:run
  "url": "https://cdn.example.com/ep01.mp4", "renditions": []}
 ```
 
-H5 和官网播放器按 `type` 选择 iframe 或原生播放器；后台 `preview-url` 同样支持外部源。
+H5、官网和 App 播放器按 `type` 选择 iframe / WebView 或原生播放器；后台 `preview-url` 同样支持外部源。
 
 ### 重要限制
 
@@ -455,7 +455,7 @@ H5 和官网播放器按 `type` 选择 iframe 或原生播放器；后台 `previ
 - 外链集在官网公开预览里**按免费集展示**（即使集号超出 `free_episode_count`），方便导流；Bunny 集仍按免费窗口判断。
 - 第三方平台必须允许嵌入（不能返回拒绝嵌入的 `X-Frame-Options` / CSP），且视频公开可访问；YouTube 还可能受地区 / 年龄限制。
 - 抖音没有稳定的公开 embed 地址，按「通用 iframe」填可嵌入的 https 播放页。
-- App（Flutter）当前只适配 Bunny 播放器，外链集在 App 内暂不播放，后续版本补齐。
+- App（Flutter）已适配：`embed` 来源用内嵌 WebView 播放（YouTube / TikTok / Facebook / Vimeo / 抖音 / 通用 iframe），`hls` / `mp4` 用原生 `video_player`；外链集不做进度上报，只上报一次 start。
 - 数据库迁移：`server/src/main/resources/db/migration/V4__external_video_sources.sql` 新增 `video_provider` / `external_video_id` / `external_url` / `aspect_ratio`，启动时 Flyway 自动执行。
 ## 运行 App
 
