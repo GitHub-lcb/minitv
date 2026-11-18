@@ -249,6 +249,21 @@ npm run dev
 电脑 `ipconfig` 查 IPv4（例如 `192.168.1.5`），手机浏览器打开 `http://192.168.1.5:5175/`。
 第一次监听时 Windows 防火墙会弹窗，记得允许 Node.js。手机热点方案：电脑连上手机热点后，同样访问电脑在热点网段的 IP。
 
+如果电脑没有弹窗、手机访问一直是「连接超时」，检查是否已有显式的 Node Block 规则（Windows 里 Block 优先于 Allow）：
+
+```powershell
+Get-NetFirewallRule | Where-Object { $_.DisplayName -match 'Node|node' } |
+  ForEach-Object { $app = $_ | Get-NetFirewallApplicationFilter -ErrorAction SilentlyContinue
+    [pscustomobject]@{ Name = $_.DisplayName; Action = $_.Action; Profile = $_.Profile; Program = $app.Program } } |
+  Format-Table -AutoSize
+```
+
+若有指向你 Node 路径的 `Block` 规则，需要管理员权限处理（任选其一）：
+
+- 禁用该 Block 规则：`Get-NetFirewallRule -DisplayName "Node.js JavaScript Runtime" | Disable-NetFirewallRule`；
+- 或改用本机另一个已放行的 Node 可执行文件启动 Vite；
+- 或干脆用下面的隧道 / adb reverse 方案（走出站连接，不受入站防火墙影响）。
+
 **B. 手机移动网络 + 临时公网隧道（不在同一网络）**
 
 以 Cloudflare 快速隧道为例：
