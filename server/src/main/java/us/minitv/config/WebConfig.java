@@ -19,6 +19,12 @@ public class WebConfig implements WebMvcConfigurer {
             "http://127.0.0.1:5173",
             "http://localhost:5174",
             "http://127.0.0.1:5174",
+            // H5 dev server. Python's CORSMiddleware only omitted headers for
+            // unknown origins, so 5175 used to work through the Vite proxy
+            // (same-origin in the browser). Spring rejects with "Invalid CORS
+            // request" instead, and POST /v1/playback therefore 403'd.
+            "http://localhost:5175",
+            "http://127.0.0.1:5175",
             "https://minitv.us",
             "https://www.minitv.us",
             "https://admin.minitv.us",
