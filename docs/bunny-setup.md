@@ -4,6 +4,8 @@ MiniTV 的图片和视频都托管在 [bunny.net](https://bunny.net)：封面/�
 
 本文按「先配图片，视频随后」的顺序写。只配图片也能正常建剧、传封面、显示列表；视频相关接口在补齐 Stream 配置前会返回明确的 503。
 
+> 只想接第三方平台（YouTube / TikTok / Facebook / Vimeo 等）做免费引流、暂时不用 Bunny？直接用后台的「外链分集」，不需要本文的任何凭据；玩法与限制见 README 的「多视频来源：Bunny + 第三方 embed」。
+
 > 安全约定：所有密钥只写进仓库根目录 `.env`（已被 `.gitignore` 忽略），不要提交、不要贴到聊天/文档/前端代码里。开发、预发、生产必须使用**不同**的 Stream Library、Storage Zone 和 Pull Zone。
 
 ---

@@ -346,7 +346,9 @@ public class AFContentEpisodeService {
         List<Map<String, Object>> skipped = new ArrayList<>();
         for (EpisodeRow episode : rows) {
             found.add(episode.getId());
-            if ("published".equals(target) && safe(episode.getBunnyVideoId()).isEmpty()) {
+            boolean hasSource = !safe(episode.getBunnyVideoId()).isEmpty()
+                    || ExternalVideoSource.isExternal(episode.getVideoProvider());
+            if ("published".equals(target) && !hasSource) {
                 skipped.add(skippedRow(episode.getId(), episode.getStatus(), "no_video"));
                 continue;
             }
@@ -382,7 +384,13 @@ public class AFContentEpisodeService {
     public void deleteEpisode(long episodeId, long actorId) {
         EpisodeRow episode = requireEpisode(episodeId);
         String status = episode.getStatus();
-        if (!"not_uploaded".equals(status) && !"transcode_failed".equals(status)) {
+        boolean external = ExternalVideoSource.isExternal(episode.getVideoProvider());
+        // External rows have no bytes to orphan: they can be removed unless they
+        // are live (published). Bunny rows stay restricted to empty shells.
+        boolean deletable = external
+                ? !"published".equals(status) && !"transcoding".equals(status)
+                : "not_uploaded".equals(status) || "transcode_failed".equals(status);
+        if (!deletable) {
             throw new ApiException(409, ApiException.detail("episode_not_empty",
                     "第 " + episode.getEpisodeNumber() + " 集是 " + status + "，只有空壳可以删；请先下架"));
         }

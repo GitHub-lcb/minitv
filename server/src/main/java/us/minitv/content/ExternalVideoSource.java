@@ -82,7 +82,12 @@ public final class ExternalVideoSource {
                     throw ApiException.unprocessable("Vimeo 需要视频 ID 或链接");
                 }
             }
-            case FACEBOOK -> requireHttps(url.isEmpty() ? "https://www.facebook.com/" : url);
+            case FACEBOOK -> {
+                requireHttps(url);
+                if (url.isEmpty()) {
+                    throw ApiException.unprocessable("Facebook 需要公开视频链接");
+                }
+            }
             case DOUYIN, IFRAME -> {
                 requireHttps(url);
                 if (url.isEmpty()) {

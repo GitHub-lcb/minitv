@@ -399,10 +399,10 @@ mvn spring-boot:run
 如果配置 Bunny Stream Webhook 指向 `https://<你的 API 域名>/v1/bunny/callback`，请求必须带
 `X-Bunny-Signature = HMAC-SHA256(BUNNY_CALLBACK_SECRET, 原始请求体)`。Bunny 原生 Webhook 不发送这个头，直接指向会返回 401；需要自己加一层中继签名，或继续使用对账/手动同步。
 
-### 5. 不接 Bunny 的替代方案
+### 5. 不接 Bunny 时
 
 - **只要封面临时可用**：不配 Storage，建剧后在后台/`PATCH /admin/v1/dramas/{id}` 里把 `cover_url` 填成任意外部图片 URL。
-- **视频**：`episodes` 只保存 `bunny_video_id`，没有"外部视频 URL"字段。不接 Bunny 就只能保持 `BUNNY_MODE=fake`（地址是假的，播放器不会真的出画面）；要接别家 HLS 需要改播放模块代码。
+- **视频**：Bunny 仍是付费/会员正片的默认源，但不再是唯一源。只想用第三方平台做免费引流时，直接在后台建「外链分集」，不需要任何 Bunny 凭据（见下一节）。
 - **批量导入**：`python3 scripts/import_hotlist.py` 走后台 API + Bunny PUT 批量导入；单集也可用 CLI `minitv episode upload <id> ./ep01.mp4`。
 
 ### 6. 常见排错
@@ -414,6 +414,49 @@ mvn spring-boot:run
 | 上传返回 401 / 502 | `BUNNY_STREAM_API_KEY` 与 Library 不匹配，或用了账号 API Key 代替 Library API Key |
 | 上传接口 503 | `BUNNY_MODE=real` 但对应变量为空；按 `detail` 里的变量名补齐并重启 |
 | 字幕播放 500 | 有 `subtitle_url` 但 `BUNNY_IMAGE_TOKEN_KEY` 为空 |
+
+## 多视频来源：Bunny + 第三方 embed
+
+`episodes` 支持两类视频来源，可以在同一部剧里混用；默认仍是 Bunny。
+
+| `video_provider` | 播放方式 | 典型用途 |
+| --- | --- | --- |
+| `bunny`（默认） | 签名 HLS + 平台播放器 | 付费 / 会员正片，可控、可扣费 |
+| `youtube` / `tiktok` / `facebook` / `vimeo` / `douyin` / `iframe` | 第三方播放器 iframe | 已有平台账号导流，省流量成本 |
+| `hls` / `mp4` | H5 / 官网原生播放器（hls.js / `<video>`） | 自有 CDN 或其他直链 |
+
+### 后台怎么用
+
+1. 打开剧目 → 分集面板 →「外链分集」。
+2. 选平台，填视频链接；YouTube / TikTok / Vimeo 也可以只填视频 ID（填链接会自动识别）。
+3. 画面比例默认 16:9，TikTok / 抖音默认 9:16；也支持 1:1、4:3。
+4. 对话框内直接预览；保存后进入「审核中」，按正常流程上架。
+5. 已有外链集可以「编辑外链」改来源 / 链接 / 比例；也可以「改为上传」切回 Bunny（外链字段会清空，需要重新上传视频）。
+
+### 播放接口返回
+
+`POST /v1/playback` 对外链集**始终返回 `allowed: true`**（流量优先，不做金币 / 会员拦截）：
+
+```json
+// YouTube / TikTok / Facebook / Vimeo / 抖音 / iframe
+{"allowed": true, "type": "embed", "provider": "youtube",
+ "embed_url": "https://www.youtube.com/embed/...", "aspect_ratio": "16:9"}
+
+// HLS / MP4 直链
+{"allowed": true, "type": "mp4", "provider": "mp4",
+ "url": "https://cdn.example.com/ep01.mp4", "renditions": []}
+```
+
+H5 和官网播放器按 `type` 选择 iframe 或原生播放器；后台 `preview-url` 同样支持外部源。
+
+### 重要限制
+
+- **外链集无法强制付费 / 登录**：字节由第三方播放器直接获取，金币、会员、地区限制都拦不住。需要扣费的内容必须用 Bunny 源。
+- 外链集在官网公开预览里**按免费集展示**（即使集号超出 `free_episode_count`），方便导流；Bunny 集仍按免费窗口判断。
+- 第三方平台必须允许嵌入（不能返回拒绝嵌入的 `X-Frame-Options` / CSP），且视频公开可访问；YouTube 还可能受地区 / 年龄限制。
+- 抖音没有稳定的公开 embed 地址，按「通用 iframe」填可嵌入的 https 播放页。
+- App（Flutter）当前只适配 Bunny 播放器，外链集在 App 内暂不播放，后续版本补齐。
+- 数据库迁移：`server/src/main/resources/db/migration/V4__external_video_sources.sql` 新增 `video_provider` / `external_video_id` / `external_url` / `aspect_ratio`，启动时 Flyway 自动执行。
 ## 运行 App
 
 ```bash

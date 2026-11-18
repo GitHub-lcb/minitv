@@ -4,7 +4,8 @@
 
     <select id="publishedPlayable" resultType="us.minitv.content.row.EpisodeRow">
         SELECT * FROM episodes
-        WHERE drama_id = #{dramaId} AND status = 'published' AND bunny_video_id &lt;&gt; ''
+        WHERE drama_id = #{dramaId} AND status = 'published'
+          AND (bunny_video_id &lt;&gt; '' OR (video_provider IS NOT NULL AND video_provider &lt;&gt; 'bunny'))
         ORDER BY episode_number
     </select>
 
@@ -12,14 +13,17 @@
         SELECT COUNT(*) FROM episodes WHERE drama_id = #{dramaId}
     </select>
 
-    <!-- Python: count(*) and count(*) FILTER (episode_number <= dramas.free_episode_count) -->
+    <!-- Playable = Bunny-hosted OR an external platform source (traffic embeds). -->
     <select id="publishedPlayableCounters" resultType="us.minitv.pcatalog.dto.PCatalogEpisodeCounter">
         SELECT e.drama_id AS drama_id,
                COUNT(*) AS episode_count,
-               COALESCE(SUM(CASE WHEN e.episode_number &lt;= d.free_episode_count THEN 1 ELSE 0 END), 0) AS free_playable_count
+               COALESCE(SUM(CASE WHEN e.episode_number &lt;= d.free_episode_count
+                                  OR (e.video_provider IS NOT NULL AND e.video_provider &lt;&gt; 'bunny')
+                             THEN 1 ELSE 0 END), 0) AS free_playable_count
         FROM episodes e
         JOIN dramas d ON d.id = e.drama_id
-        WHERE e.status = 'published' AND e.bunny_video_id &lt;&gt; ''
+        WHERE e.status = 'published'
+          AND (e.bunny_video_id &lt;&gt; '' OR (e.video_provider IS NOT NULL AND e.video_provider &lt;&gt; 'bunny'))
         GROUP BY e.drama_id
     </select>
 
@@ -27,7 +31,8 @@
         SELECT * FROM episodes
         WHERE drama_id IN
         <foreach collection="ids" item="dramaId" open="(" separator="," close=")">#{dramaId}</foreach>
-        AND status = 'published' AND bunny_video_id &lt;&gt; ''
+        AND status = 'published'
+        AND (bunny_video_id &lt;&gt; '' OR (video_provider IS NOT NULL AND video_provider &lt;&gt; 'bunny'))
         ORDER BY drama_id, episode_number
     </select>
 
@@ -46,7 +51,8 @@
         SELECT * FROM episodes
         WHERE id IN
         <foreach collection="ids" item="episodeId" open="(" separator="," close=")">#{episodeId}</foreach>
-        AND status = 'published' AND bunny_video_id &lt;&gt; ''
+        AND status = 'published'
+        AND (bunny_video_id &lt;&gt; '' OR (video_provider IS NOT NULL AND video_provider &lt;&gt; 'bunny'))
     </select>
 
 </mapper>

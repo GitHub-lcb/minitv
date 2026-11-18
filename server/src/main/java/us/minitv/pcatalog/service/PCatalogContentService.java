@@ -2,6 +2,7 @@ package us.minitv.pcatalog.service;
 
 import org.springframework.stereotype.Service;
 import us.minitv.common.ApiException;
+import us.minitv.content.ExternalVideoSource;
 import us.minitv.content.row.DramaRow;
 import us.minitv.content.row.EpisodeRow;
 import us.minitv.content.row.TagRow;
@@ -183,6 +184,15 @@ public class PCatalogContentService {
         return PCatalogOut.of("limit", PREVIEW_LIMIT, "categories", categories);
     }
 
+    /**
+     * Free on the public website: inside the drama's free window, or an
+     * external platform source (traffic-first embeds; no paywall possible).
+     */
+    private static boolean isFreePreview(EpisodeRow episode, DramaRow drama) {
+        return ExternalVideoSource.isExternal(episode.getVideoProvider())
+                || episode.getEpisodeNumber() <= drama.getFreeEpisodeCount();
+    }
+
     /** GET /v1/preview/dramas/{drama_id} - metadata plus the published episode list. */
     public Map<String, Object> previewDrama(long dramaId) {
         DramaRow drama = getPublishedDrama(dramaId);
@@ -195,7 +205,7 @@ public class PCatalogContentService {
         }
         long freePlayable = 0L;
         for (EpisodeRow episode : episodes) {
-            if (episode.getEpisodeNumber() <= drama.getFreeEpisodeCount()) {
+            if (isFreePreview(episode, drama)) {
                 freePlayable++;
             }
         }
@@ -216,7 +226,7 @@ public class PCatalogContentService {
                     "episode_number", episode.getEpisodeNumber(),
                     "title", episode.getTitle(),
                     "duration_seconds", episode.getDurationSeconds(),
-                    "free", episode.getEpisodeNumber() <= drama.getFreeEpisodeCount()));
+                    "free", isFreePreview(episode, drama)));
         }
         return PCatalogOut.of(
                 "drama", previewCard(drama, counter, tags),
