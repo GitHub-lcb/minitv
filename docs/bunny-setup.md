@@ -89,7 +89,16 @@ BUNNY_IMAGE_TOKEN_KEY=local-dev-image-token
   - `API Key` → `BUNNY_STREAM_API_KEY`
 - 同页 `Pull Zone` → **Manage**（或 **CDN** 页）：复制 **Hostname**，形如 `vz-xxxxx.b-cdn.net` → `BUNNY_STREAM_CDN_HOST`
 
-> 注意区分三个长得很像的 key：Library API Key（管理视频/上传授权）、Token authentication key（播放签名）、账号 API Key（账号级资源管理/清缓存）。
+ > 注意区分三个长得很像的 key：
+>
+> | key | 在哪 | 形态 | 用途 |
+> | --- | --- | --- | --- |
+> | Library API Key | 库 → **API** 页 | 41 位（含 `-`） | 创建视频对象、TUS 直传授权 |
+> | Token authentication key | 库 → **Security** 页（也等于库关联 Pull Zone 的 Token Authentication Key） | 通常 36 位 GUID | 播放 HLS / Player embed 签名 |
+> | 账号 API Key | Account → API key | 较长 GUID | 账号级管理、清缓存（purge） |
+>
+> 如果 Security 页还没有现成 key：打开 **Embed view token authentication** 即可生成；也可以通过 Bunny API
+> `POST https://api.bunny.net/videolibrary/{id}`（body `{"EnableTokenAuthentication":true,"PlayerTokenAuthenticationEnabled":true}`）开启。
 
 ### 2.3 开启 Token 鉴权（播放必需）
 
@@ -195,6 +204,8 @@ curl.exe -X DELETE "https://sg.storage.bunnycdn.com/minitv-dev/__probe.txt" `
 | 字幕播放 500 | 有 `subtitle_url` 但 `BUNNY_IMAGE_TOKEN_KEY` 为空 |
 | Purge 失败但上传正常 | 本机访问不了 `api.bunny.net`，或账号 API Key 不对；不影响播放 |
 | Bunny 转码长期不完成 | 到 Bunny 控制台看该视频状态；后台点「同步状态」；检查视频格式（MP4/MOV，≤200MB） |
+| 上传会话接口返回 502 / 后端日志 `video.bunnycdn.com ... timeout` | 后端所在网络访问不了 Bunny 视频 API。服务器一般可直连；本机开发若有代理，可给 JVM 加代理后启动：`$env:JAVA_TOOL_OPTIONS='-Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=<代理端口>'`（图片走 `*.b-cdn.net`/`storage.bunnycdn.com`，通常不受影响） |
+| 播放 403 且日志提示 token 不对 | `BUNNY_STREAM_TOKEN_KEY` 填成了 Library API Key；两者不要混用 |
 
 ---
 
