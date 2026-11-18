@@ -38,6 +38,12 @@ public interface AFContentEpisodeMapper {
 
     int insert(EpisodeRow row);
 
+    /** Switch an episode between Bunny and an external source. */
+    int updateSource(@Param("id") long id, @Param("provider") String provider,
+                     @Param("videoId") String videoId, @Param("url") String url,
+                     @Param("aspectRatio") String aspectRatio, @Param("status") String status,
+                     @Param("bunnyVideoId") String bunnyVideoId);
+
     int updateTitle(@Param("id") long id, @Param("title") String title);
 
     int updateEpisodeNumber(@Param("id") long id, @Param("number") int number);

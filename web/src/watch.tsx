@@ -155,7 +155,7 @@ export default function WatchPage({ dramaId }: { dramaId: number }) {
 
   const play = (episode: PreviewEpisode) => {
     // Re-clicking the episode that is already streaming should not restart it.
-    if (episode.free && episode.id === selected?.id && auth?.url) return;
+    if (episode.free && episode.id === selected?.id && (auth?.url || auth?.embed_url)) return;
     if (episode.id !== selected?.id) retryRef.current = 0;
     setNotice("");
     setNeedsTap(false);
@@ -168,12 +168,18 @@ export default function WatchPage({ dramaId }: { dramaId: number }) {
     setBusy(true);
     authorizePlayback(dramaId, episode.id)
       .then((result) => {
-        if (!result.allowed || !result.url) {
+        // Embeds carry `embed_url` instead of a stream URL but are still playable.
+        if (!result.allowed || (!result.url && !result.embed_url)) {
           setAuth(null);
           setNotice("locked");
           return;
         }
         setAuth(result);
+        // An iframe player reports nothing back, so its "start" is counted here.
+        if (result.type === "embed" && result.episode_id && !startedRef.current.has(result.episode_id)) {
+          startedRef.current.add(result.episode_id);
+          reportEvent("start", result.episode_id);
+        }
       })
       .catch(() => {
         setAuth(null);
@@ -210,9 +216,19 @@ export default function WatchPage({ dramaId }: { dramaId: number }) {
   advanceRef.current = advance;
 
   useEffect(() => {
+    // Iframe embeds render their own player: clear the hls/native state and
+    // never attach hls.js to a media element that is not shown.
+    if (auth?.type === "embed") {
+      setQualities([]);
+      setSelectedQuality(-1);
+      setActiveQuality(-1);
+      setQualityOpen(false);
+      return;
+    }
     const video = videoRef.current;
     const src = auth?.url;
     if (!video || !src) return;
+    const sourceType = auth?.type ?? "hls";
     let cancelled = false;
     let hls: import("hls.js").default | null = null;
     const episodeId = auth?.episode_id;
@@ -253,7 +269,11 @@ export default function WatchPage({ dramaId }: { dramaId: number }) {
       video.src = src;
       video.addEventListener("loadedmetadata", handleLoadedMetadata, { once: true });
     };
-    if (nativeHls && !mseAvailable) {
+    if (sourceType === "mp4") {
+      // Direct MP4 files stream through the browser's native player; hls.js
+      // only understands manifests.
+      playNatively();
+    } else if (nativeHls && !mseAvailable) {
       playNatively();
     } else {
       import("hls.js").then(({ default: Hls }) => {
@@ -357,6 +377,11 @@ export default function WatchPage({ dramaId }: { dramaId: number }) {
   const appOnlyEpisodes = Math.max(0, detail.total_episode_count - items.length);
   const activeOption = qualities.find((option) => option.index === activeQuality) ?? null;
   const selectedOption = qualities.find((option) => option.index === selectedQuality) ?? null;
+  const embedAspect =
+    auth?.type === "embed" && auth.embed_url ? auth.aspect_ratio || "16:9" : null;
+  const embedPortrait = embedAspect
+    ? Number(embedAspect.split(":")[1] ?? 0) > Number(embedAspect.split(":")[0] ?? 0)
+    : false;
 
   return (
     <main className="watch-page">
@@ -370,8 +395,28 @@ export default function WatchPage({ dramaId }: { dramaId: number }) {
 
         <div className="watch-layout">
           <section className="watch-stage" aria-label={`${drama.title} player`}>
-            <div className="watch-frame">
-              {auth?.url ? (
+            <div
+              className={`watch-frame${embedAspect ? " watch-frame-embed" : ""}`}
+              style={
+                embedAspect
+                  ? {
+                      width: embedPortrait ? "min(100%, 420px)" : "min(100%, 760px)",
+                      aspectRatio: embedAspect.replace(":", " / "),
+                    }
+                  : undefined
+              }
+            >
+              {auth?.type === "embed" && auth.embed_url ? (
+                <div className="watch-embed">
+                  <iframe
+                    title={`${drama.title} EP ${selected.episode_number}`}
+                    src={auth.embed_url}
+                    allow="accelerometer; autoplay; encrypted-media; picture-in-picture; fullscreen"
+                    allowFullScreen
+                    referrerPolicy="strict-origin-when-cross-origin"
+                  />
+                </div>
+              ) : auth?.url ? (
                 <>
                   <video ref={videoRef} className="watch-video" controls playsInline />
                   {needsTap && (

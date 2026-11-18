@@ -68,11 +68,24 @@
   <insert id="insert" useGeneratedKeys="true" keyProperty="id">
     INSERT INTO episodes
       (drama_id, episode_number, title, duration_seconds, bunny_video_id, subtitle_url,
-       width, height, size_bytes, mime, status)
+       width, height, size_bytes, mime, status, video_provider, external_video_id,
+       external_url, aspect_ratio)
     VALUES
       (#{dramaId}, #{episodeNumber}, #{title}, #{durationSeconds}, #{bunnyVideoId}, #{subtitleUrl},
-       #{width}, #{height}, #{sizeBytes}, #{mime}, #{status})
+       #{width}, #{height}, #{sizeBytes}, #{mime}, #{status}, #{videoProvider}, #{externalVideoId},
+       #{externalUrl}, #{aspectRatio})
   </insert>
+
+  <update id="updateSource">
+    UPDATE episodes
+    SET video_provider = #{provider},
+        external_video_id = #{videoId},
+        external_url = #{url},
+        aspect_ratio = #{aspectRatio},
+        status = #{status},
+        bunny_video_id = #{bunnyVideoId}
+    WHERE id = #{id}
+  </update>
 
   <update id="updateTitle">
     UPDATE episodes SET title = #{title} WHERE id = #{id}

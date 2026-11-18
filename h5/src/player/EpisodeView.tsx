@@ -17,6 +17,11 @@ interface Props {
   onFinished?: () => void;
 }
 
+interface EmbedState {
+  url: string;
+  aspect: string;
+}
+
 /**
  * Mints a signed URL only while this slot is the one on screen, then reports
  * start / 15s progress / complete. Analytics failures never stop playback.
@@ -38,6 +43,7 @@ export function EpisodeView({
   const [paused, setPaused] = useState(false);
   const [progress, setProgress] = useState(0);
   const [failed, setFailed] = useState(false);
+  const [embed, setEmbed] = useState<EmbedState | null>(null);
   const onFinishedRef = useRef(onFinished);
   onFinishedRef.current = onFinished;
   const onQualitiesChangeRef = useRef(onQualitiesChange);
@@ -45,45 +51,47 @@ export function EpisodeView({
 
   useEffect(() => {
     if (!active || !playable) return;
-    const video = videoRef.current;
-    if (!video) return;
     let handle: PlayerHandle | null = null;
     let heartbeat = 0;
     let cancelled = false;
     let finished = false;
+    const listeners = new AbortController();
 
     const report = (kind: "start" | "progress" | "complete", position: number) => {
       postJson(`/v1/playback/${kind}`, { episode_id: episodeId, position_seconds: position }).catch(() => undefined);
     };
 
-    const finish = () => {
-      if (finished) return;
-      finished = true;
-      window.clearInterval(heartbeat);
-      report("complete", Math.floor(video.duration || 0));
-      onFinishedRef.current?.();
-    };
-
-    const onTime = () => {
-      if (!video.duration) return;
-      setProgress(video.currentTime / video.duration);
-      if (video.currentTime >= video.duration - 1.5) finish();
-    };
-
     (async () => {
       try {
         const auth = await postJson<PlaybackAuth>("/v1/playback", { drama_id: dramaId, episode_id: episodeId });
-        if (cancelled || !auth.allowed || !auth.url) {
-          if (!cancelled && auth.allowed === false) setFailed(true);
+        if (cancelled) return;
+        if (!auth.allowed || (!auth.url && auth.type !== "embed")) {
+          if (auth.allowed === false) setFailed(true);
           return;
         }
-        handle = attachHls(video, auth.url, (levels) => {
-          onQualitiesChangeRef.current?.(levels);
-        });
-        handleRef.current = handle;
-        if (quality) {
-          handle.setQuality(quality);
+        if (auth.type === "embed") {
+          // Platform players (YouTube / Facebook / TikTok / 抖音 / iframe) own
+          // the playback UI and cannot report progress reliably; count the open.
+          setEmbed({ url: auth.embed_url ?? "", aspect: auth.aspect_ratio || "16:9" });
+          report("start", 0);
+          return;
         }
+        setEmbed(null);
+        const video = videoRef.current;
+        if (!video) return;
+
+        const finish = () => {
+          if (finished) return;
+          finished = true;
+          window.clearInterval(heartbeat);
+          report("complete", Math.floor(video.duration || 0));
+          onFinishedRef.current?.();
+        };
+        const onTime = () => {
+          if (!video.duration) return;
+          setProgress(video.currentTime / video.duration);
+          if (video.currentTime >= video.duration - 1.5) finish();
+        };
         const start = () => {
           if (resumeSeconds > 0) video.currentTime = resumeSeconds;
           video.playbackRate = playbackSpeed;
@@ -91,10 +99,31 @@ export function EpisodeView({
           report("start", resumeSeconds);
           heartbeat = window.setInterval(() => report("progress", Math.floor(video.currentTime || 0)), 15000);
         };
+        video.addEventListener("timeupdate", onTime, { signal: listeners.signal });
+        video.addEventListener("ended", finish, { signal: listeners.signal });
+        video.addEventListener(
+          "loadedmetadata",
+          () => {
+            start();
+            handle?.setQuality(quality);
+          },
+          { once: true, signal: listeners.signal }
+        );
+
+        if (auth.type === "mp4") {
+          // Plain progressive file served by any CDN.
+          video.src = auth.url as string;
+          return;
+        }
+
+        handle = attachHls(video, auth.url as string, (levels) => {
+          onQualitiesChangeRef.current?.(levels);
+        });
+        handleRef.current = handle;
+        if (quality) {
+          handle.setQuality(quality);
+        }
         if (video.readyState >= 1) start();
-        else video.addEventListener("loadedmetadata", start, { once: true });
-        video.addEventListener("timeupdate", onTime);
-        video.addEventListener("ended", finish);
       } catch {
         if (!cancelled) setFailed(true);
       }
@@ -103,12 +132,17 @@ export function EpisodeView({
     return () => {
       cancelled = true;
       window.clearInterval(heartbeat);
-      video.removeEventListener("timeupdate", onTime);
-      video.removeEventListener("ended", finish);
+      listeners.abort();
       handle?.destroy();
       handleRef.current = null;
     };
   }, [active, playable, dramaId, episodeId, resumeSeconds]);
+
+  useEffect(() => {
+    setEmbed(null);
+    setFailed(false);
+    setProgress(0);
+  }, [episodeId]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -147,11 +181,25 @@ export function EpisodeView({
     }
   };
 
+  const embedAspect = embed ? embed.aspect.replace(":", " / ") : undefined;
+
   return (
     <>
-      <video ref={videoRef} playsInline onClick={toggle} />
+      {embed ? (
+        <div className="embed-frame" style={{ aspectRatio: embedAspect }}>
+          <iframe
+            src={embed.url}
+            title="video"
+            allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+            allowFullScreen
+            referrerPolicy="strict-origin-when-cross-origin"
+          />
+        </div>
+      ) : (
+        <video ref={videoRef} playsInline onClick={toggle} />
+      )}
       {failed && <div className="lock">Could not play</div>}
-      {paused && playable && (
+      {!embed && paused && playable && (
         <button
           type="button"
           className="play-pause-overlay"
@@ -163,7 +211,7 @@ export function EpisodeView({
           </span>
         </button>
       )}
-      <div className="progress"><b style={{ width: `${progress * 100}%` }} /></div>
+      {!embed && <div className="progress"><b style={{ width: `${progress * 100}%` }} /></div>}
     </>
   );
 }

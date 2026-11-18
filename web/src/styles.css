@@ -1261,6 +1261,27 @@ summary:focus-visible {
   background: #000;
 }
 
+/* Third-party embeds (YouTube/TikTok/Vimeo/Facebook) own their controls; the
+   frame adapts to the episode's aspect instead of the default 9:16 stage. */
+.watch-frame-embed {
+  max-width: 760px;
+}
+
+.watch-embed,
+.watch-embed iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.watch-embed {
+  background: #000;
+}
+
+.watch-embed iframe {
+  border: 0;
+}
+
 /* Manual quality picker (hls.js path; Safari's native HLS controls keep their own menu). */
 .watch-quality {
   position: absolute;

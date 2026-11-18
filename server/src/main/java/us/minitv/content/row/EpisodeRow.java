@@ -13,6 +13,10 @@ public class EpisodeRow {
     private String title;
     private Integer durationSeconds;
     private String bunnyVideoId;
+    private String videoProvider;
+    private String externalVideoId;
+    private String externalUrl;
+    private String aspectRatio;
     private String subtitleUrl;
     private Integer width;
     private Integer height;

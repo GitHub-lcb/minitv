@@ -3,6 +3,7 @@ package us.minitv.pcommerce.service;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import us.minitv.common.ApiException;
+import us.minitv.content.ExternalVideoSource;
 import us.minitv.content.row.DramaRow;
 import us.minitv.content.row.EpisodeRow;
 import us.minitv.content.row.TagRow;
@@ -106,6 +107,33 @@ public class PCommercePlaybackService {
         boolean member = subscriptionActive(userId);
         boolean unlocked = userId != null
                 && wallet.findEntitlement(userId, episode.getId(), ENTITLEMENT_TYPE_COIN) != null;
+
+        // External sources (platform embeds or direct HLS/MP4 URLs) are traffic
+        // content: the player owns the bytes, so a coin/member gate cannot be
+        // enforced. The paid wall stays on Bunny rows.
+        String provider = episode.getVideoProvider() == null || episode.getVideoProvider().isEmpty()
+                ? ExternalVideoSource.BUNNY : episode.getVideoProvider();
+        if (ExternalVideoSource.isExternal(provider)) {
+            String type = ExternalVideoSource.typeOf(provider);
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("allowed", true);
+            out.put("type", type);
+            out.put("provider", provider);
+            if ("embed".equals(type)) {
+                out.put("embed_url", ExternalVideoSource.embedUrl(provider,
+                        episode.getExternalVideoId(), episode.getExternalUrl()));
+                out.put("aspect_ratio", episode.getAspectRatio());
+            } else {
+                out.put("url", episode.getExternalUrl());
+                out.put("renditions", new ArrayList<>());
+            }
+            out.put("episode_id", episode.getId());
+            out.put("episode_number", episode.getEpisodeNumber());
+            out.put("title", episode.getTitle());
+            out.put("duration_seconds", episode.getDurationSeconds());
+            return out;
+        }
+
         if (!(free || member || unlocked)) {
             Map<String, Object> unlock = new LinkedHashMap<>();
             unlock.put("coin_price", drama.getCoinPricePerEpisode());
@@ -138,6 +166,8 @@ public class PCommercePlaybackService {
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("allowed", true);
+        out.put("type", "hls");
+        out.put("provider", ExternalVideoSource.BUNNY);
         out.put("expires_at", signed.get("expires_at"));
         out.put("url", signed.get("url"));
         out.put("renditions", renditions);
@@ -223,8 +253,11 @@ public class PCommercePlaybackService {
         List<Map<String, Object>> items = new ArrayList<>();
         Map<String, Object> resume = null;
         for (EpisodeRow episode : episodes) {
-            boolean free = episode.getEpisodeNumber() <= drama.getFreeEpisodeCount();
-            boolean locked = !(free || member || unlocked.contains(episode.getId()));
+            String provider = episode.getVideoProvider() == null || episode.getVideoProvider().isEmpty()
+                    ? ExternalVideoSource.BUNNY : episode.getVideoProvider();
+            boolean external = ExternalVideoSource.isExternal(provider);
+            boolean free = external || episode.getEpisodeNumber() <= drama.getFreeEpisodeCount();
+            boolean locked = !external && !(free || member || unlocked.contains(episode.getId()));
             int position = progressRows.getOrDefault(episode.getId(), 0);
             Map<String, Object> unlock = null;
             if (locked) {
@@ -242,6 +275,7 @@ public class PCommercePlaybackService {
             item.put("completed", completed.contains(episode.getId()));
             item.put("comment_count", commentCounts.getOrDefault(episode.getId(), 0));
             item.put("unlock", unlock);
+            item.put("video_provider", provider);
             items.add(item);
             // Resume = the first watchable episode started but not finished;
             // otherwise the first watchable episode at all.

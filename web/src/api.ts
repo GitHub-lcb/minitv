@@ -61,6 +61,13 @@ export type PreviewDramaDetail = {
 
 export type PlaybackAuth = {
   allowed: boolean;
+  /** `hls` (Bunny or external), `mp4` direct link, or `embed` for third-party players. */
+  type?: "hls" | "mp4" | "embed";
+  provider?: string;
+  /** Third-party player URL; present when `type` is `embed`. */
+  embed_url?: string;
+  /** Container aspect for the embed frame, e.g. `9:16`. */
+  aspect_ratio?: string;
   url?: string;
   expires_at?: number;
   reason?: string;

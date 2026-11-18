@@ -75,6 +75,10 @@ public class AFContentUploadService {
     /** {@code create_upload_session}: issues a Bunny video id and TUS authorization. */
     @Transactional
     public Map<String, Object> createUploadSession(EpisodeRow episode, AFContentAdminDtos.UploadIn body) {
+        if (us.minitv.content.ExternalVideoSource.isExternal(episode.getVideoProvider())) {
+            throw new ApiException(409, ApiException.detail("external_source",
+                    "该分集使用外部视频源，不能上传文件；如需上传请先把来源切回 Bunny"));
+        }
         String mime = body.mime();
         if (!ALLOWED_MIME.contains(mime)) {
             throw ApiException.unprocessable("only MP4 or MOV is accepted");

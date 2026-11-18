@@ -12,6 +12,7 @@ import us.minitv.admin.flow.content.mapper.AFContentMediaUploadMapper;
 import us.minitv.common.ApiException;
 import us.minitv.common.Json;
 import us.minitv.common.row.AuditLogRow;
+import us.minitv.content.ExternalVideoSource;
 import us.minitv.content.row.DramaRow;
 import us.minitv.content.row.EpisodeRow;
 import us.minitv.security.RedisStore;
@@ -99,13 +100,29 @@ public class AFContentEpisodeService {
         if (title.length() > 200) {
             title = title.substring(0, 200);
         }
+        ExternalVideoSource.Source source = ExternalVideoSource.normalise(
+                body.videoProvider(), body.externalVideoId(), body.externalUrl(), body.aspectRatio());
+        boolean external = ExternalVideoSource.isExternal(source.provider());
         EpisodeRow row = newEpisode(dramaId, number, title);
+        row.setVideoProvider(source.provider());
+        row.setExternalVideoId(source.videoId());
+        row.setExternalUrl(source.url());
+        row.setAspectRatio(source.aspectRatio());
+        if (external) {
+            // No transcode step: the platform/player owns the bytes, so the row
+            // enters review immediately and skips the upload session.
+            row.setStatus("in_review");
+            row.setDurationSeconds(body.durationSeconds() == null ? 0 : body.durationSeconds());
+        } else {
+            row.setDurationSeconds(body.durationSeconds() == null ? 0 : body.durationSeconds());
+        }
         episodes.insert(row);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("id", row.getId());
         result.put("episode_number", row.getEpisodeNumber());
         result.put("title", row.getTitle());
         result.put("status", row.getStatus());
+        result.put("video_provider", row.getVideoProvider());
         return result;
     }
 
@@ -170,6 +187,10 @@ public class AFContentEpisodeService {
             item.put("status", row.getStatus());
             item.put("duration_seconds", row.getDurationSeconds());
             item.put("bunny_video_id", row.getBunnyVideoId());
+            item.put("video_provider", row.getVideoProvider());
+            item.put("external_video_id", row.getExternalVideoId());
+            item.put("external_url", row.getExternalUrl());
+            item.put("aspect_ratio", row.getAspectRatio());
             items.add(item);
         }
         Map<String, Object> result = new LinkedHashMap<>();
@@ -183,6 +204,21 @@ public class AFContentEpisodeService {
     /** {@code episode_preview_url}: short-lived Bunny Player URLs for an admin preview. */
     public Map<String, Object> previewUrl(long episodeId) {
         EpisodeRow episode = requireEpisode(episodeId);
+        String provider = safe(episode.getVideoProvider());
+        if (ExternalVideoSource.isExternal(provider)) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("episode_id", episode.getId());
+            result.put("episode_number", episode.getEpisodeNumber());
+            result.put("type", ExternalVideoSource.typeOf(provider));
+            result.put("provider", provider);
+            result.put("aspect_ratio", episode.getAspectRatio());
+            if ("embed".equals(ExternalVideoSource.typeOf(provider))) {
+                result.put("embed_url", ExternalVideoSource.embedUrl(provider,
+                        episode.getExternalVideoId(), episode.getExternalUrl()));
+            }
+            result.put("url", episode.getExternalUrl());
+            return result;
+        }
         String videoId = safe(episode.getBunnyVideoId());
         if (videoId.isEmpty()) {
             throw new ApiException(409, "episode has no Bunny video");
@@ -204,12 +240,43 @@ public class AFContentEpisodeService {
     // Metadata edit / publish / bulk status / delete
     // ------------------------------------------------------------------
 
-    /** {@code update_episode}: partial metadata edit (title / episode number). */
+    /** {@code update_episode}: partial metadata edit (title / episode number / source). */
     @Transactional
     public Map<String, Object> updateEpisode(long episodeId, AFContentAdminDtos.EpisodeUpdateIn body) {
         EpisodeRow episode = requireEpisode(episodeId);
-        if (body.title() == null && body.episodeNumber() == null) {
+        boolean sourceTouched = body.videoProvider() != null || body.externalVideoId() != null
+                || body.externalUrl() != null || body.aspectRatio() != null;
+        if (body.title() == null && body.episodeNumber() == null && !sourceTouched) {
             throw ApiException.unprocessable("没有需要更新的字段");
+        }
+        if (sourceTouched) {
+            String provider = body.videoProvider() != null ? body.videoProvider() : episode.getVideoProvider();
+            String videoId = body.externalVideoId() != null ? body.externalVideoId() : episode.getExternalVideoId();
+            String url = body.externalUrl() != null ? body.externalUrl() : episode.getExternalUrl();
+            String aspect = body.aspectRatio() != null ? body.aspectRatio() : episode.getAspectRatio();
+            ExternalVideoSource.Source source = ExternalVideoSource.normalise(provider, videoId, url, aspect);
+            boolean external = ExternalVideoSource.isExternal(source.provider());
+            String status;
+            String bunnyId;
+            if (external) {
+                // Switching to an external source drops the Bunny object. Rows that
+                // were never playable enter review; published rows keep their status.
+                bunnyId = "";
+                status = "published".equals(episode.getStatus()) || "unpublished".equals(episode.getStatus())
+                        ? episode.getStatus() : "in_review";
+            } else {
+                bunnyId = episode.getBunnyVideoId() == null ? "" : episode.getBunnyVideoId();
+                status = ExternalVideoSource.isExternal(episode.getVideoProvider())
+                        ? "not_uploaded" : episode.getStatus();
+            }
+            episodes.updateSource(episodeId, source.provider(), source.videoId(), source.url(),
+                    source.aspectRatio(), status, bunnyId);
+            episode.setVideoProvider(source.provider());
+            episode.setExternalVideoId(source.videoId());
+            episode.setExternalUrl(source.url());
+            episode.setAspectRatio(source.aspectRatio());
+            episode.setStatus(status);
+            episode.setBunnyVideoId(bunnyId);
         }
         if (body.title() != null) {
             String title = body.title().strip();
@@ -348,6 +415,10 @@ public class AFContentEpisodeService {
         row.setTitle(title);
         row.setDurationSeconds(0);
         row.setBunnyVideoId("");
+        row.setVideoProvider(ExternalVideoSource.BUNNY);
+        row.setExternalVideoId("");
+        row.setExternalUrl("");
+        row.setAspectRatio("");
         row.setSubtitleUrl("");
         row.setWidth(0);
         row.setHeight(0);

@@ -184,6 +184,12 @@ export interface PlayPayload {
 export interface PlaybackAuth {
   allowed: boolean;
   reason?: string;
+  /** hls (Bunny/direct) | mp4 (direct file) | embed (platform player). */
+  type?: "hls" | "mp4" | "embed";
+  provider?: string;
+  /** Present for type=embed: the official platform player URL. */
+  embed_url?: string;
+  aspect_ratio?: string;
   url?: string;
   expires_at?: number;
   renditions?: string[];

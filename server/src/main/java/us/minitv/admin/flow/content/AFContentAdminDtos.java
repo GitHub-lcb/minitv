@@ -26,7 +26,12 @@ public final class AFContentAdminDtos {
     /** {@code EpisodeIn}: episode_number >= 1, title default "", max 200. */
     public record EpisodeIn(
             @JsonProperty("episode_number") @NotNull @Min(1) Integer episodeNumber,
-            @JsonProperty("title") @Size(max = 200) String title) {
+            @JsonProperty("title") @Size(max = 200) String title,
+            @JsonProperty("video_provider") @Size(max = 16) String videoProvider,
+            @JsonProperty("external_video_id") @Size(max = 128) String externalVideoId,
+            @JsonProperty("external_url") @Size(max = 1000) String externalUrl,
+            @JsonProperty("aspect_ratio") @Size(max = 8) String aspectRatio,
+            @JsonProperty("duration_seconds") @Min(0) Integer durationSeconds) {
     }
 
     /** {@code BulkIn}: 1 <= count <= 200. */
@@ -53,7 +58,11 @@ public final class AFContentAdminDtos {
     /** {@code EpisodeUpdateIn}: partial metadata edit, both fields optional. */
     public record EpisodeUpdateIn(
             @JsonProperty("title") @Size(max = 200) String title,
-            @JsonProperty("episode_number") @Min(1) @Max(2000) Integer episodeNumber) {
+            @JsonProperty("episode_number") @Min(1) @Max(2000) Integer episodeNumber,
+            @JsonProperty("video_provider") @Size(max = 16) String videoProvider,
+            @JsonProperty("external_video_id") @Size(max = 128) String externalVideoId,
+            @JsonProperty("external_url") @Size(max = 1000) String externalUrl,
+            @JsonProperty("aspect_ratio") @Size(max = 8) String aspectRatio) {
     }
 
     /** {@code StatusIn}: the requested drama status. */
