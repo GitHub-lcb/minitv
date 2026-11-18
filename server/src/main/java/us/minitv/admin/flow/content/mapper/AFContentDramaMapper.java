@@ -15,6 +15,10 @@ public interface AFContentDramaMapper {
 
     int updateStatus(@Param("id") long id, @Param("status") String status);
 
+    /** Open (or re-open) a supplier review record: pending + submitted_at. */
+    int submitReview(@Param("id") long id, @Param("state") String state,
+                     @Param("submittedAt") LocalDateTime submittedAt);
+
     int updatePublishedAt(@Param("id") long id, @Param("publishedAt") LocalDateTime publishedAt);
 
     int updateCoverUrl(@Param("id") long id, @Param("coverUrl") String coverUrl);

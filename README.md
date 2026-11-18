@@ -256,6 +256,7 @@ python3 scripts/check_local_env.py
 ### 常见问题
 
 - **后台登录 503「会话存储不可用」/ Redis 报 `MISCONF`**：本机 Redis 无法写 RDB（目录权限或磁盘问题）时，写命令会被禁用。修复 `dir` 权限，或另起一个可写实例：`redis-server --port 16379 --requirepass minitv_local --appendonly no --dir <可写目录>`，再把 `.env` 的 `REDIS_URL` 改为 `redis://:minitv_local@127.0.0.1:16379/0`。
+- **上剧方剧集点「通过并上架」报 409 `not_approved`**：上剧方内容必须先在「待审核」通过审核。如果「待审核」里没有这部剧，说明它被改到了「审核中」但还没送审：先点「退回草稿」，再点「提交审核」（会自动生成待审核记录），审核通过后即可上架。
 - **打开前端报 `ERR_CONNECTION_REFUSED`**：Vite 在 Windows / Node 18+ 下通常只监听 `localhost`（IPv6 `::1`），请用 <http://localhost:5173> 而不是 `127.0.0.1`；需要局域网访问时在 `vite.config.ts` 的 `server.host` 里显式设置 `0.0.0.0`。
 - **Windows 找不到 `mysql` 命令**：直接跑 `.\scripts\init_mysql.ps1`（默认用 `C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe`），或加参数 `-MysqlExe "你的 mysql.exe 路径"`。
 - **MySQL80 服务没起来**：以管理员身份执行 `Start-Service MySQL80`，或 `Get-Service MySQL80` 查看状态。

@@ -10,6 +10,14 @@
     UPDATE dramas SET status = #{status} WHERE id = #{id}
   </update>
 
+  <update id="submitReview">
+    UPDATE dramas
+    SET review_state = #{state},
+        review_note = NULL,
+        submitted_at = #{submittedAt}
+    WHERE id = #{id}
+  </update>
+
   <update id="updatePublishedAt">
     UPDATE dramas SET published_at = #{publishedAt} WHERE id = #{id}
   </update>

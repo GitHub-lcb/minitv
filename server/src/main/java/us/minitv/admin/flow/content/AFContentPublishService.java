@@ -69,10 +69,13 @@ public class AFContentPublishService {
     @Transactional
     public Map<String, Object> changeDramaStatus(long dramaId, String toStatus, long actorId) {
         DramaRow drama = requireDrama(dramaId);
+        boolean supplierOwned = drama.getSupplierId() != null;
+        String reviewState = drama.getReviewState() == null ? "" : drama.getReviewState();
         // Supplier content becomes visible only after review.
-        if ("published".equals(toStatus) && drama.getSupplierId() != null
-                && !"approved".equals(drama.getReviewState())) {
-            throw new ApiException(409, ApiException.detail("not_approved", "上剧方剧集需审核通过后才能上架"));
+        if ("published".equals(toStatus) && supplierOwned && !"approved".equals(reviewState)) {
+            throw new ApiException(409, ApiException.detail("not_approved",
+                    "上剧方剧集需审核通过后才能上架。若「待审核」中没有这部剧，"
+                            + "请先「退回草稿」再「提交审核」，审核通过后再上架"));
         }
         try {
             AFContentTransitions.requireDramaTransition(drama.getStatus(), toStatus);
@@ -81,6 +84,18 @@ public class AFContentPublishService {
         }
         dramas.updateStatus(dramaId, toStatus);
         drama.setStatus(toStatus);
+        // An operator's "submit for review" on supplier content also opens the
+        // review record. Without this the drama can sit at status=in_review
+        // with review_state=none, where neither the review queue (pending only)
+        // nor publish (approved only) can move it - the dead end reported in
+        // the admin console ("上剧方剧集需审核通过后才能上架").
+        if (supplierOwned && "in_review".equals(toStatus)
+                && (reviewState.isEmpty() || "none".equals(reviewState) || "rejected".equals(reviewState))) {
+            LocalDateTime submittedAt = Times.now();
+            dramas.submitReview(dramaId, "pending", submittedAt);
+            drama.setReviewState("pending");
+            drama.setSubmittedAt(submittedAt);
+        }
         if ("published".equals(toStatus)) {
             LocalDateTime publishedAt = Times.now();
             dramas.updatePublishedAt(dramaId, publishedAt);
@@ -99,6 +114,9 @@ public class AFContentPublishService {
         audits.insert(log);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("status", drama.getStatus());
+        if (supplierOwned) {
+            result.put("review_state", drama.getReviewState());
+        }
         return result;
     }
 
