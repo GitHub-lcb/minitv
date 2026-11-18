@@ -234,6 +234,50 @@ Vite 已配好代理，`/v1` 与 `/admin/v1` 自动转发到 `127.0.0.1:18110`�
 > Windows 下也可以一条命令拉起 4 个窗口（后端 + 三个前端）：`.\scripts\start-dev.ps1`；
 > 只启动后端用 `-NoFrontends`，只启动前端用 `-NoBackend`。
 
+### 6. 手机浏览器访问本地 H5（可选）
+
+按场景选一种：
+
+**A. 同一 Wi-Fi / 手机热点（最简单）**
+
+```powershell
+cd h5
+$env:VITE_DEV_HOST = "0.0.0.0"     # 或不设变量，用 npm run dev -- --host
+npm run dev
+```
+
+电脑 `ipconfig` 查 IPv4（例如 `192.168.1.5`），手机浏览器打开 `http://192.168.1.5:5175/`。
+第一次监听时 Windows 防火墙会弹窗，记得允许 Node.js。手机热点方案：电脑连上手机热点后，同样访问电脑在热点网段的 IP。
+
+**B. 手机移动网络 + 临时公网隧道（不在同一网络）**
+
+以 Cloudflare 快速隧道为例：
+
+```powershell
+winget install --id Cloudflare.cloudflared
+# 另开一个终端，记下输出里的 https://xxx.trycloudflare.com
+cloudflared tunnel --url http://127.0.0.1:5175
+
+cd h5
+$env:VITE_ALLOWED_HOSTS = ".trycloudflare.com"    # 允许隧道域名（点开头=所有子域）
+npm run dev
+```
+
+手机打开隧道地址即可。ngrok / localtunnel 同理：`ngrok http 5175`（`VITE_ALLOWED_HOSTS=.ngrok-free.app`）、`npx localtunnel --port 5175`（`.loca.lt`）。
+
+**C. Tailscale（私网，不需要暴露公网）**
+
+电脑和手机都装并登录 Tailscale → 电脑用 `VITE_DEV_HOST=0.0.0.0` 启动 H5 → 手机打开 `http://100.x.x.x:5175/`。
+
+**Android USB（免网络）**：手机开启 USB 调试，电脑执行 `adb reverse tcp:5175 tcp:5175`，手机浏览器打开 `http://localhost:5175/`。
+
+说明：
+
+- `APP_ENV=local` 时后端会自动允许 localhost / 私网 IP / 常见隧道域名的 CORS 来源，不用改代码；生产环境仍使用显式白名单。
+- H5 的 API 走 Vite 代理到电脑上的 `18110`，后端不需要单独暴露公网。
+- 视频 HLS 直连 Bunny CDN，手机网络需要能访问 `*.b-cdn.net`。
+- ⚠️ 隧道会把 dev server 临时暴露到公网（包含 `/v1` 代理），测完即关；不要用这种方式暴露管理后台。
+
 ### 本地端口一览
 
 | 服务 | 本机安装（默认） | Docker 备选 |

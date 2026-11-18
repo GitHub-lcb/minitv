@@ -3,6 +3,7 @@ package us.minitv.config;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.method.support.HandlerMethodArgumentResolver;
+import org.springframework.web.servlet.config.annotation.CorsRegistration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import us.minitv.security.AuthArgumentResolvers;
@@ -29,6 +30,30 @@ public class WebConfig implements WebMvcConfigurer {
             "https://www.minitv.us",
             "https://admin.minitv.us",
             "https://h5.minitv.us");
+
+    /**
+     * Extra origins accepted only when APP_ENV is local/dev/test: phone access
+     * to a local dev server arrives with the LAN IP / tunnel hostname as Origin
+     * (browsers send Origin on POST, which the Vite proxy forwards). Production
+     * keeps the explicit allow-list above.
+     */
+    private static final List<String> LOCAL_ORIGIN_PATTERNS = List.of(
+            "http://localhost:[*]",
+            "http://127.0.0.1:[*]",
+            "http://192.168.*:[*]",
+            "http://10.*:[*]",
+            "http://172.*:[*]",
+            // Tailscale / CGNAT addresses
+            "http://100.*:[*]",
+            // Common quick tunnels used for phone testing
+            "https://*.trycloudflare.com",
+            "https://*.loca.lt",
+            "https://*.ngrok-free.app",
+            "https://*.ngrok-free.dev",
+            "https://*.ngrok.io");
+
+    @Value("${APP_ENV:local}")
+    private String appEnv;
 
     @Value("${CORS_ORIGINS:}")
     private String extraOrigins;
@@ -59,11 +84,22 @@ public class WebConfig implements WebMvcConfigurer {
                 }
             }
         }
-        registry.addMapping("/**")
-                .allowedOrigins(origins.toArray(String[]::new))
+        CorsRegistration registration = registry.addMapping("/**")
                 .allowedMethods("*")
                 .allowedHeaders("*")
                 .allowCredentials(true);
+        if (isLocalEnvironment()) {
+            List<String> patterns = new ArrayList<>(origins);
+            patterns.addAll(LOCAL_ORIGIN_PATTERNS);
+            registration.allowedOriginPatterns(patterns.toArray(String[]::new));
+        } else {
+            registration.allowedOrigins(origins.toArray(String[]::new));
+        }
+    }
+
+    private boolean isLocalEnvironment() {
+        String value = appEnv == null ? "" : appEnv.trim().toLowerCase();
+        return value.isEmpty() || "local".equals(value) || "dev".equals(value) || "test".equals(value);
     }
 
     @Override
