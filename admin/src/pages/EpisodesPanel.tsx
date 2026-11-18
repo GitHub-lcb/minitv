@@ -1564,7 +1564,7 @@ export default function EpisodesPanel({ dramaId }: { dramaId: string }) {
       />
 
       <EpisodeEditorModal
-        key={editorNonce}
+        key={`editor-${editorNonce}`}
         open={editorOpen}
         dramaId={dramaId}
         episodes={rows}
@@ -1577,7 +1577,7 @@ export default function EpisodesPanel({ dramaId }: { dramaId: string }) {
       />
 
       <ExternalEpisodeModal
-        key={externalNonce}
+        key={`external-${externalNonce}`}
         open={externalOpen}
         dramaId={dramaId}
         episodes={rows}
