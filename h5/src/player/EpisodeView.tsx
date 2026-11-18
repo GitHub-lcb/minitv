@@ -44,6 +44,8 @@ export function EpisodeView({
   const [progress, setProgress] = useState(0);
   const [failed, setFailed] = useState(false);
   const [embed, setEmbed] = useState<EmbedState | null>(null);
+  /** width / height reported by the media element; null until metadata loads. */
+  const [videoAspect, setVideoAspect] = useState<number | null>(null);
   const onFinishedRef = useRef(onFinished);
   onFinishedRef.current = onFinished;
   const onQualitiesChangeRef = useRef(onQualitiesChange);
@@ -142,6 +144,7 @@ export function EpisodeView({
     setEmbed(null);
     setFailed(false);
     setProgress(0);
+    setVideoAspect(null);
   }, [episodeId]);
 
   useEffect(() => {
@@ -181,12 +184,19 @@ export function EpisodeView({
     }
   };
 
-  const embedAspect = embed ? embed.aspect.replace(":", " / ") : undefined;
+  // Landscape sources (HLS/MP4 with width > height, or a landscape embed) keep
+  // their real ratio in a centred letterbox band. Portrait sources keep the
+  // full-bleed vertical stage the feed is designed around.
+  const mediaAspect = embed ? aspectNumber(embed.aspect) : videoAspect;
+  const contained = mediaAspect != null && mediaAspect > 1.02;
 
   return (
     <>
-      {embed ? (
-        <div className="embed-frame" style={{ aspectRatio: embedAspect }}>
+      <div
+        className={`media-box${contained ? " is-contained" : ""}`}
+        style={contained && mediaAspect != null ? { aspectRatio: mediaAspect } : undefined}
+      >
+        {embed ? (
           <iframe
             src={embed.url}
             title="video"
@@ -194,10 +204,20 @@ export function EpisodeView({
             allowFullScreen
             referrerPolicy="strict-origin-when-cross-origin"
           />
-        </div>
-      ) : (
-        <video ref={videoRef} playsInline onClick={toggle} />
-      )}
+        ) : (
+          <video
+            ref={videoRef}
+            playsInline
+            onClick={toggle}
+            onLoadedMetadata={(event) => {
+              const video = event.currentTarget;
+              if (video.videoWidth > 0 && video.videoHeight > 0) {
+                setVideoAspect(video.videoWidth / video.videoHeight);
+              }
+            }}
+          />
+        )}
+      </div>
       {failed && <div className="lock">Could not play</div>}
       {!embed && paused && playable && (
         <button
@@ -214,4 +234,14 @@ export function EpisodeView({
       {!embed && <div className="progress"><b style={{ width: `${progress * 100}%` }} /></div>}
     </>
   );
+}
+
+/** "9:16" → 0.5625; malformed values return null. */
+function aspectNumber(value: string): number | null {
+  const parts = value.split(":");
+  if (parts.length !== 2) return null;
+  const width = Number(parts[0]);
+  const height = Number(parts[1]);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
+  return width / height;
 }
