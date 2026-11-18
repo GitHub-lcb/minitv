@@ -255,6 +255,7 @@ python3 scripts/check_local_env.py
 
 ### 常见问题
 
+- **后台登录 503「会话存储不可用」/ Redis 报 `MISCONF`**：本机 Redis 无法写 RDB（目录权限或磁盘问题）时，写命令会被禁用。修复 `dir` 权限，或另起一个可写实例：`redis-server --port 16379 --requirepass minitv_local --appendonly no --dir <可写目录>`，再把 `.env` 的 `REDIS_URL` 改为 `redis://:minitv_local@127.0.0.1:16379/0`。
 - **打开前端报 `ERR_CONNECTION_REFUSED`**：Vite 在 Windows / Node 18+ 下通常只监听 `localhost`（IPv6 `::1`），请用 <http://localhost:5173> 而不是 `127.0.0.1`；需要局域网访问时在 `vite.config.ts` 的 `server.host` 里显式设置 `0.0.0.0`。
 - **Windows 找不到 `mysql` 命令**：直接跑 `.\scripts\init_mysql.ps1`（默认用 `C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe`），或加参数 `-MysqlExe "你的 mysql.exe 路径"`。
 - **MySQL80 服务没起来**：以管理员身份执行 `Start-Service MySQL80`，或 `Get-Service MySQL80` 查看状态。
@@ -262,6 +263,8 @@ python3 scripts/check_local_env.py
 - **想清空本地数据重来**：`DROP DATABASE minitv;`，重新执行第 2 步初始化，再启动后端（Flyway 会重新建表）。
 - **MySQL 重启后 Flyway 报触发器权限错误**：`SET GLOBAL log_bin_trust_function_creators = 1` 是运行时变量，重启会失效；在 `my.ini` 的 `[mysqld]` 下加一行 `log_bin_trust_function_creators=1`，或重新执行 `scripts/init_mysql.sql`。
 ## 配置真实图片与视频（Bunny）
+
+> 完整操作手册（控制台点击路径、凭据对照表、验证命令、排错与安全清单）：[docs/bunny-setup.md](docs/bunny-setup.md)。
 
 默认 `BUNNY_MODE=fake`：不联网、封面上传返回 503、视频走本地假的 TUS 接收端，适合不依赖外网的本地联调。
 要让「封面/字幕上传、视频直传、签名播放」走真实云端，需要 Bunny.net 账号并把下面这些凭据填进 `.env`。
